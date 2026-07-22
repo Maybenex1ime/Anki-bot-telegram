@@ -5,7 +5,8 @@ from telegram.ext import (Application, CallbackQueryHandler, CommandHandler,
                           MessageHandler, filters)
 
 from app import config, db, lookup
-from app.bot import create_flow, misc, review_flow, textrouter, voice_flow
+from app.bot import (create_flow, misc, reminders, review_flow, textrouter,
+                     voice_flow)
 from app.bot.auth import owner_filter
 from app.bot.textrouter import register
 
@@ -21,6 +22,7 @@ async def post_init(app):
     n = lookup.ensure_cedict(conn)
     if n:
         logging.info("Đã nạp CC-CEDICT: %d mục", n)
+    reminders.schedule_jobs(app)
 
 
 def build_app() -> Application:
