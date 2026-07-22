@@ -6,7 +6,7 @@ from telegram.ext import (Application, CallbackQueryHandler, CommandHandler,
 
 from app import config, db, lookup
 from app.bot import (create_flow, decks_flow, manage_flow, misc, reminders,
-                     review_flow, textrouter, voice_flow)
+                     review_flow, settings_flow, textrouter, voice_flow)
 from app.bot.auth import owner_filter
 from app.bot.textrouter import register
 
@@ -14,6 +14,9 @@ register("pc_field", create_flow.field_input)
 register("deck_new", decks_flow.deck_new_input)
 register("deck_rename", decks_flow.deck_rename_input)
 register("card_edit", manage_flow.card_edit_input)
+register("set_times", settings_flow.times_input)
+register("set_nudge", settings_flow.nudge_input)
+register("set_newlimit", settings_flow.newlimit_input)
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -35,11 +38,13 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("on", review_flow.cmd_review, filters=owner_filter))
     app.add_handler(CommandHandler("bo", decks_flow.cmd_decks, filters=owner_filter))
     app.add_handler(CommandHandler("tim", manage_flow.cmd_search, filters=owner_filter))
+    app.add_handler(CommandHandler("settings", settings_flow.cmd_settings, filters=owner_filter))
     app.add_handler(CallbackQueryHandler(create_flow.on_callback, pattern=r"^pc_"))
     app.add_handler(CallbackQueryHandler(review_flow.on_callback, pattern=r"^rv_"))
     app.add_handler(CallbackQueryHandler(voice_flow.on_rec_callback, pattern=r"^vc_rec:"))
     app.add_handler(CallbackQueryHandler(decks_flow.on_callback, pattern=r"^dk_"))
     app.add_handler(CallbackQueryHandler(manage_flow.on_callback, pattern=r"^cd_"))
+    app.add_handler(CallbackQueryHandler(settings_flow.on_callback, pattern=r"^st_"))
     app.add_handler(MessageHandler(owner_filter & filters.TEXT & ~filters.COMMAND, textrouter.on_text))
     app.add_handler(MessageHandler(owner_filter & filters.PHOTO, textrouter.on_photo))
     app.add_handler(MessageHandler(owner_filter & filters.VOICE, voice_flow.on_voice))
