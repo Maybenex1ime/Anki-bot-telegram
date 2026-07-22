@@ -1,0 +1,193 @@
+### Task 10: Luồng ôn tập (`app/bot/review_flow.py`)
+
+**Files:** Create `app/bot/review_flow.py`; Modify `app/bot/main.py`
+
+**Interfaces:**
+- Consumes: `cards.build_queue/get_card/apply_rating/retry_audio`, `stats.streak`, `db.kv_*`, `config.today/today_iso`
+- Produces:
+  - kv `session`: `{"queue": [ids], "pos": int, "done": int, "chat": int, "msg": int|None, "aux": [msg_ids]}`
+  - `review_flow.cmd_review(update, context)` (lệnh /on); `review_flow.start_session(context, chat_id)` — task Reminders sẽ gọi lại hàm này qua callback `rv_start`
+  - `review_flow.send_card_audio(context, chat_id, row) -> Message|None` — gửi voice từ `audio_file_id` (cache) hoặc từ file rồi lưu file_id; nếu chưa có audio thì thử `retry_audio` một lần; hết cách trả None. Task voice_flow dùng lại hàm này.
+  - Callback data: `rv_start`, `rv_listen:<cid>`, `rv_show:<cid>`, `rv_rate:<cid>:<rating>`
+
+- [ ] **Step 1: Viết `app/bot/review_flow.py`**
+
+```python
+from pathlib import Path
+
+from telegram import InlineKeyboardButton as Btn
+from telegram import InlineKeyboardMarkup as Markup
+from telegram.error import BadRequest, TelegramError
+
+from app import cards, config, db, stats
+from app.bot.auth import owner_only_callback
+
+RATE = [("🔁 Lại", 1), ("😓 Khó", 2), ("🙂 Tốt", 3), ("😎 Dễ", 4)]
+
+
+def _front_kb(cid):
+    return Markup([[Btn("🔊 Nghe", callback_data=f"rv_listen:{cid}"),
+                    Btn("👀 Xem đáp án", callback_data=f"rv_show:{cid}")]])
+
+
+def _answer_kb(cid):
+    return Markup([
+        [Btn("🎤 Thu âm thử", callback_data=f"vc_rec:{cid}")],
+        [Btn(label, callback_data=f"rv_rate:{cid}:{r}") for label, r in RATE],
+    ])
+
+
+async def cmd_review(update, context):
+    await start_session(context, update.effective_chat.id)
+
+
+async def start_session(context, chat_id):
+    conn = context.bot_data["conn"]
+    queue = cards.build_queue(conn, config.today_iso())
+    if not queue:
+        await context.bot.send_message(chat_id, "🎉 Không có thẻ nào đến hạn. Nghỉ ngơi đi!")
+        return
+    db.kv_set(conn, "session", {"queue": queue, "pos": 0, "done": 0,
+                                "chat": chat_id, "msg": None, "aux": []})
+    await _show_front(context)
+
+
+async def _edit_or_send(context, s, text, kb):
+    conn = context.bot_data["conn"]
+    if s["msg"]:
+        try:
+            await context.bot.edit_message_text(
+                text, chat_id=s["chat"], message_id=s["msg"],
+                reply_markup=kb, parse_mode="HTML")
+            return
+        except BadRequest:
+            pass
+    m = await context.bot.send_message(s["chat"], text, reply_markup=kb, parse_mode="HTML")
+    s["msg"] = m.message_id
+    db.kv_set(conn, "session", s)
+
+
+async def _show_front(context):
+    conn = context.bot_data["conn"]
+    s = db.kv_get(conn, "session")
+    cid = s["queue"][s["pos"]]
+    row = cards.get_card(conn, cid)
+    if row is None:  # thẻ đã bị xóa giữa chừng
+        await _advance(context)
+        return
+    text = f"🀄 <b>{row['hanzi']}</b>\n\n({s['pos'] + 1}/{len(s['queue'])})"
+    await _edit_or_send(context, s, text, _front_kb(cid))
+
+
+async def _clear_aux(context, s):
+    for mid in s["aux"]:
+        try:
+            await context.bot.delete_message(s["chat"], mid)
+        except TelegramError:
+            pass
+    s["aux"] = []
+
+
+async def send_card_audio(context, chat_id, row):
+    conn = context.bot_data["conn"]
+    if row["audio_file_id"]:
+        return await context.bot.send_voice(chat_id, row["audio_file_id"])
+    path = row["audio_path"]
+    if not path:
+        if not await cards.retry_audio(conn, row["id"]):
+            return None
+        row = cards.get_card(conn, row["id"])
+        path = row["audio_path"]
+    if not Path(path).exists():
+        return None
+    with open(path, "rb") as f:
+        m = await context.bot.send_voice(chat_id, f)
+    conn.execute("UPDATE cards SET audio_file_id=? WHERE id=?",
+                 (m.voice.file_id, row["id"]))
+    conn.commit()
+    return m
+
+
+@owner_only_callback
+async def on_callback(update, context):
+    q = update.callback_query
+    conn = context.bot_data["conn"]
+    await q.answer()
+    if q.data == "rv_start":
+        await start_session(context, q.message.chat_id)
+        return
+    s = db.kv_get(conn, "session")
+    if not s:
+        await q.edit_message_text("Phiên ôn đã kết thúc. Gõ /on để ôn tiếp.")
+        return
+    parts = q.data.split(":")
+    action, cid = parts[0], int(parts[1])
+
+    if action == "rv_listen":
+        row = cards.get_card(conn, cid)
+        m = await send_card_audio(context, s["chat"], row)
+        if m is None:
+            await context.bot.send_message(s["chat"], "⚠️ Thẻ này chưa có audio.")
+        else:
+            s["aux"].append(m.message_id)
+            db.kv_set(conn, "session", s)
+
+    elif action == "rv_show":
+        row = cards.get_card(conn, cid)
+        lines = [f"🀄 <b>{row['hanzi']}</b>", f"📖 {row['pinyin']}",
+                 f"🇬🇧 {row['meaning'] or '<i>(chưa có nghĩa)</i>'}"]
+        if row["example"]:
+            lines.append(f"💬 {row['example']}")
+        lines.append(f"\n({s['pos'] + 1}/{len(s['queue'])})")
+        await _edit_or_send(context, s, "\n".join(lines), _answer_kb(cid))
+        if row["image_file_id"]:
+            m = await context.bot.send_photo(s["chat"], row["image_file_id"])
+            s["aux"].append(m.message_id)
+        m = await send_card_audio(context, s["chat"], row)
+        if m:
+            s["aux"].append(m.message_id)
+        db.kv_set(conn, "session", s)
+
+    elif action == "rv_rate":
+        rating = int(parts[2])
+        cards.apply_rating(conn, cid, rating, config.today())
+        if rating == 1:
+            s["queue"].append(cid)  # Lại -> lặp lại cuối phiên
+        s["done"] += 1
+        await _clear_aux(context, s)
+        db.kv_set(conn, "session", s)
+        await _advance(context)
+
+
+async def _advance(context):
+    conn = context.bot_data["conn"]
+    s = db.kv_get(conn, "session")
+    s["pos"] += 1
+    if s["pos"] >= len(s["queue"]):
+        n = stats.streak(conn, config.today())
+        await _edit_or_send(
+            context, s,
+            f"🎉 <b>Hoàn thành!</b> Đã ôn {s['done']} lượt.\n🔥 Chuỗi: {n} ngày liên tiếp.",
+            None)
+        db.kv_del(conn, "session")
+        return
+    db.kv_set(conn, "session", s)
+    await _show_front(context)
+```
+
+- [ ] **Step 2: Nối vào `main.py`**
+
+```python
+from app.bot import review_flow
+app.add_handler(CommandHandler("on", review_flow.cmd_review, filters=owner_filter))
+app.add_handler(CallbackQueryHandler(review_flow.on_callback, pattern=r"^rv_"))
+```
+
+- [ ] **Step 3: Test thủ công**
+
+Kịch bản: tạo 3 thẻ mới → `/on` → (1) mặt trước chỉ có chữ Hán + đếm (1/3); (2) 🔊 gửi voice; (3) 👀 sửa tin nhắn thành đáp án + tự gửi audio (+ảnh nếu có); (4) bấm 🙂 Tốt → aux bị xóa, chuyển thẻ sau trong CÙNG tin nhắn; (5) bấm 🔁 Lại ở 1 thẻ → thẻ đó quay lại cuối phiên; (6) hết queue → "🎉 Hoàn thành" + streak; (7) `/on` lại → "Không có thẻ nào đến hạn"; (8) giết bot giữa phiên, chạy lại, bấm nút cũ → vẫn hoạt động (session trong SQLite).
+
+- [ ] **Step 4: Commit** — `git commit -am "feat: in-chat review session with SM-2 rating buttons"`
+
+---
+
