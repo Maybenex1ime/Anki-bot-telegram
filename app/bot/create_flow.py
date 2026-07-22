@@ -1,3 +1,5 @@
+import html
+
 from telegram import InlineKeyboardButton as Btn
 from telegram import InlineKeyboardMarkup as Markup
 from telegram.error import BadRequest
@@ -23,15 +25,15 @@ async def start_pending(update, context, hanzi):
 
 def _preview(conn, pc):
     deck = conn.execute("SELECT name FROM decks WHERE id=?", (pc["deck_id"],)).fetchone()
-    lines = [f"🀄 <b>{pc['hanzi']}</b>", f"📖 {pc['pinyin']}",
-             f"🇬🇧 {pc['meaning'] or '<i>(chưa có nghĩa — bấm Sửa nghĩa)</i>'}"]
+    lines = [f"🀄 <b>{html.escape(pc['hanzi'])}</b>", f"📖 {html.escape(pc['pinyin'])}",
+             f"🇬🇧 {html.escape(pc['meaning']) if pc['meaning'] else '<i>(chưa có nghĩa — bấm Sửa nghĩa)</i>'}"]
     if pc["example"]:
-        lines.append(f"💬 {pc['example']}")
+        lines.append(f"💬 {html.escape(pc['example'])}")
     if pc["image_file_id"]:
         lines.append("🖼 Có ảnh đính kèm")
     if cards.exists_hanzi(conn, pc["hanzi"]):
         lines.append("⚠️ <b>Đã có thẻ trùng chữ Hán này</b>")
-    lines.append(f"📦 Bộ: {deck['name'] if deck else '?'}")
+    lines.append(f"📦 Bộ: {html.escape(deck['name']) if deck else '?'}")
     lines.append("\nXem lại rồi bấm Lưu nhé:")
     kb = Markup([
         [Btn("💾 Lưu", callback_data="pc_save"), Btn("❌ Hủy", callback_data="pc_cancel")],
@@ -85,7 +87,7 @@ async def on_callback(update, context):
         db.kv_del(conn, "pending_msg")
         note = "" if row["audio_path"] else "\n⚠️ Chưa tạo được audio, sẽ thử lại khi ôn."
         await q.edit_message_text(
-            f"✅ Đã lưu thẻ <b>{row['hanzi']}</b> ({row['pinyin']}){note}",
+            f"✅ Đã lưu thẻ <b>{html.escape(row['hanzi'])}</b> ({html.escape(row['pinyin'])}){note}",
             parse_mode="HTML")
     elif data.startswith("pc_edit:"):
         field = data.split(":", 1)[1]
