@@ -1,3 +1,4 @@
 python-telegram-bot[job-queue]==21.*
 pypinyin>=0.53
 edge-tts>=6.1
+tzdata
