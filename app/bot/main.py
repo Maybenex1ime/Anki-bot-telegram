@@ -41,6 +41,8 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("tim", manage_flow.cmd_search, filters=owner_filter))
     app.add_handler(CommandHandler("settings", settings_flow.cmd_settings, filters=owner_filter))
     app.add_handler(CommandHandler("csv", csv_flow.cmd_csv, filters=owner_filter))
+    app.add_handler(CommandHandler("thongke", misc.cmd_stats, filters=owner_filter))
+    app.add_handler(CommandHandler("backup", misc.cmd_backup, filters=owner_filter))
     app.add_handler(CallbackQueryHandler(create_flow.on_callback, pattern=r"^pc_"))
     app.add_handler(CallbackQueryHandler(review_flow.on_callback, pattern=r"^rv_"))
     app.add_handler(CallbackQueryHandler(voice_flow.on_rec_callback, pattern=r"^vc_rec:"))
