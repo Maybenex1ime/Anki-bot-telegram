@@ -41,9 +41,12 @@ def overview(conn, today_iso):
     new_waiting = conn.execute(
         "SELECT COUNT(*) c FROM cards WHERE repetitions=0 AND lapses=0 AND due_date<=?",
         (today_iso,)).fetchone()["c"]
-    agg = conn.execute("SELECT COALESCE(SUM(repetitions),0) r, COALESCE(SUM(lapses),0) l FROM cards").fetchone()
+    # total_reviews from daily_log: SM-2 AGAIN resets cards.repetitions to 0,
+    # so SUM(repetitions) erases history — daily_log is the true review count.
+    total_reviews = conn.execute("SELECT COALESCE(SUM(reviews),0) r FROM daily_log").fetchone()["r"]
+    total_lapses = conn.execute("SELECT COALESCE(SUM(lapses),0) l FROM cards").fetchone()["l"]
     return {
         "total": total, "due": due, "new_waiting": new_waiting,
         "streak": streak(conn, date.fromisoformat(today_iso)),
-        "total_reviews": agg["r"], "total_lapses": agg["l"],
+        "total_reviews": total_reviews, "total_lapses": total_lapses,
     }

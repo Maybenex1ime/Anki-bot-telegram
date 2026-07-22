@@ -30,3 +30,21 @@ def test_streak_broken(tmp_path):
     conn = make(tmp_path)
     stats.bump_review(conn, "2026-07-15", was_new=False)
     assert stats.streak(conn, date(2026, 7, 22)) == 0
+
+
+def test_total_reviews_counts_reviews_after_again(tmp_path):
+    # A card reviewed then rated AGAIN resets cards.repetitions to 0, but the
+    # reviews still happened — total_reviews (from daily_log) must keep counting.
+    from app import cards
+    conn = make(tmp_path)
+    cur = conn.execute(
+        "INSERT INTO cards(deck_id,hanzi,pinyin,created_at,due_date) "
+        "VALUES(1,'好','hǎo','2026-07-22','2026-07-22')")
+    conn.commit()
+    cid = cur.lastrowid
+    today = date(2026, 7, 22)
+    cards.apply_rating(conn, cid, 3, today)  # Tốt -> repetitions=1
+    cards.apply_rating(conn, cid, 1, today)  # Lại (AGAIN) -> repetitions back to 0
+    ov = stats.overview(conn, today.isoformat())
+    assert ov["total_reviews"] == 2  # both reviews counted despite reset
+    assert conn.execute("SELECT repetitions FROM cards WHERE id=?", (cid,)).fetchone()["repetitions"] == 0

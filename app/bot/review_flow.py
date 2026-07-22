@@ -46,7 +46,9 @@ async def _edit_or_send(context, s, text, kb):
                 text, chat_id=s["chat"], message_id=s["msg"],
                 reply_markup=kb, parse_mode="HTML")
             return
-        except BadRequest:
+        except BadRequest as e:
+            if "not modified" in str(e).lower():
+                return  # double-tap on same view — nothing to send
             pass
     m = await context.bot.send_message(s["chat"], text, reply_markup=kb, parse_mode="HTML")
     s["msg"] = m.message_id
@@ -108,9 +110,13 @@ async def on_callback(update, context):
         return
     parts = q.data.split(":")
     action, cid = parts[0], int(parts[1])
+    row = cards.get_card(conn, cid)
 
     if action == "rv_listen":
-        row = cards.get_card(conn, cid)
+        if row is None:  # thẻ đã bị xóa giữa chừng
+            await context.bot.send_message(s["chat"], "⚠️ Thẻ này đã bị xóa.")
+            await _advance(context)
+            return
         m = await send_card_audio(context, s["chat"], row)
         if m is None:
             await context.bot.send_message(s["chat"], "⚠️ Thẻ này chưa có audio.")
@@ -119,7 +125,10 @@ async def on_callback(update, context):
             db.kv_set(conn, "session", s)
 
     elif action == "rv_show":
-        row = cards.get_card(conn, cid)
+        if row is None:  # thẻ đã bị xóa giữa chừng
+            await context.bot.send_message(s["chat"], "⚠️ Thẻ này đã bị xóa.")
+            await _advance(context)
+            return
         lines = [f"🀄 <b>{html.escape(row['hanzi'])}</b>", f"📖 {html.escape(row['pinyin'])}",
                  f"🇬🇧 {html.escape(row['meaning']) if row['meaning'] else '<i>(chưa có nghĩa)</i>'}"]
         if row["example"]:
@@ -135,6 +144,15 @@ async def on_callback(update, context):
         db.kv_set(conn, "session", s)
 
     elif action == "rv_rate":
+        # Ignore stale/double taps: an old session message or a fast repeat
+        # would re-apply SM-2 and skip the next card. Only the current card counts.
+        if s["pos"] >= len(s["queue"]) or s["queue"][s["pos"]] != cid:
+            return
+        if row is None:  # thẻ đã bị xóa giữa chừng — skip without rating
+            await _clear_aux(context, s)
+            db.kv_set(conn, "session", s)
+            await _advance(context)
+            return
         rating = int(parts[2])
         cards.apply_rating(conn, cid, rating, config.today())
         if rating == 1:
