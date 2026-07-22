@@ -295,7 +295,7 @@ def test_third_good_multiplies_by_ease():
     s = SrsState(interval=3.0, ease=2.5, repetitions=2)
     s2, due = review(s, GOOD, TODAY)
     assert s2.interval == pytest.approx(7.5)
-    assert due == TODAY + timedelta(days=8)  # round(7.5) = 8 (banker's -> 8? no: round(7.5)==8 is False in py; see impl note)
+    assert due == TODAY + timedelta(days=8)  # 7.5 làm tròn nửa-lên = 8 (xem note làm tròn dưới)
 
 
 def test_again_resets_and_stays_today():
@@ -870,9 +870,9 @@ async def test_queue_reviews_first_then_new_with_limit(conn):
     today = date(2026, 7, 22)
     cards.apply_rating(conn, ids[0], srs.AGAIN, today)  # thành review, due hôm nay
     q = cards.build_queue(conn, today.isoformat())
-    assert q[0] == ids[0]                 # review đứng trước
-    assert q[1:] == [ids[1], ids[2]]      # new giới hạn còn 2-1=1? xem note dưới
-    # NOTE: apply_rating với thẻ mới tính 1 suất new_introduced -> còn 1 suất new
+    assert q[0] == ids[0]      # review đứng trước
+    # apply_rating trên thẻ mới đã tính 1 suất new_introduced -> chỉ còn 1 suất new
+    assert q[1:] == [ids[1]]
 
 
 async def test_apply_rating_updates_card_and_stats(conn):
