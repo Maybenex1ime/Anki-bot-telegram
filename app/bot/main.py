@@ -1,11 +1,15 @@
 import logging
 
 from telegram import Update
-from telegram.ext import Application, CommandHandler
+from telegram.ext import (Application, CallbackQueryHandler, CommandHandler,
+                          MessageHandler, filters)
 
 from app import config, db, lookup
-from app.bot import misc
+from app.bot import create_flow, misc, textrouter
 from app.bot.auth import owner_filter
+from app.bot.textrouter import register
+
+register("pc_field", create_flow.field_input)
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -23,6 +27,9 @@ def build_app() -> Application:
     app = (Application.builder().token(config.BOT_TOKEN)
            .post_init(post_init).build())
     app.add_handler(CommandHandler("start", misc.cmd_start, filters=owner_filter))
+    app.add_handler(CallbackQueryHandler(create_flow.on_callback, pattern=r"^pc_"))
+    app.add_handler(MessageHandler(owner_filter & filters.TEXT & ~filters.COMMAND, textrouter.on_text))
+    app.add_handler(MessageHandler(owner_filter & filters.PHOTO, textrouter.on_photo))
     return app
 
 
