@@ -77,7 +77,7 @@ Kèm trạng thái SRS mỗi thẻ: `due_date`, `interval`, `ease_factor`, `repe
 ```csv
 hán,pinyin,nghĩa,ví_dụ
 学习,,,我在学习中文
-你好,nǐ hǎo,xin chào (hello),
+你好,nǐ hǎo,hello; hi,
 ```
 
 Chỉ cột `hán` bắt buộc; cột trống thì tự sinh (pinyin, nghĩa) hoặc bỏ qua (ví dụ).
