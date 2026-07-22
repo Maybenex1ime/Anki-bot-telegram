@@ -5,7 +5,7 @@ from telegram.ext import (Application, CallbackQueryHandler, CommandHandler,
                           MessageHandler, filters)
 
 from app import config, db, lookup
-from app.bot import create_flow, misc, review_flow, textrouter
+from app.bot import create_flow, misc, review_flow, textrouter, voice_flow
 from app.bot.auth import owner_filter
 from app.bot.textrouter import register
 
@@ -30,8 +30,10 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("on", review_flow.cmd_review, filters=owner_filter))
     app.add_handler(CallbackQueryHandler(create_flow.on_callback, pattern=r"^pc_"))
     app.add_handler(CallbackQueryHandler(review_flow.on_callback, pattern=r"^rv_"))
+    app.add_handler(CallbackQueryHandler(voice_flow.on_rec_callback, pattern=r"^vc_rec:"))
     app.add_handler(MessageHandler(owner_filter & filters.TEXT & ~filters.COMMAND, textrouter.on_text))
     app.add_handler(MessageHandler(owner_filter & filters.PHOTO, textrouter.on_photo))
+    app.add_handler(MessageHandler(owner_filter & filters.VOICE, voice_flow.on_voice))
     return app
 
 
