@@ -78,6 +78,8 @@ async def on_callback(update, context):
             await context.bot.send_message(q.message.chat_id, "Chưa có bản thu nào cho thẻ này.")
     elif action == "cd_edit":
         field = parts[2]
+        if field not in FIELDS:
+            return
         db.kv_set(conn, "pending_input",
                   {"action": "card_edit", "cid": cid, "field": field})
         await context.bot.send_message(q.message.chat_id, f"Nhập {FIELDS[field]} mới:")
