@@ -10,6 +10,11 @@ from app.bot.auth import owner_only_callback
 
 RATE = [("🔁 Lại", 1), ("😓 Khó", 2), ("🙂 Tốt", 3), ("😎 Dễ", 4)]
 
+MODE_LABEL = {"classic": "🃏 Lật thẻ", "typed": "⌨️ Tự luận",
+              "mc:easy": "🔘 Trắc nghiệm 😌 Dễ",
+              "mc:normal": "🔘 Trắc nghiệm 🙂 Thường",
+              "mc:hard": "🔘 Trắc nghiệm 🔥 Khó"}
+
 
 def _front_kb(cid):
     return Markup([[Btn("🔊 Nghe", callback_data=f"rv_listen:{cid}"),
@@ -24,17 +29,36 @@ def _answer_kb(cid):
 
 
 async def cmd_review(update, context):
-    await start_session(context, update.effective_chat.id)
+    await show_mode_picker(context, update.effective_chat.id)
 
 
-async def start_session(context, chat_id):
+async def show_mode_picker(context, chat_id):
     conn = context.bot_data["conn"]
-    queue = cards.build_queue(conn, config.today_iso())
+    if not cards.build_queue(conn, config.today_iso()):
+        await context.bot.send_message(chat_id, "🎉 Không có thẻ nào đến hạn. Nghỉ ngơi đi!")
+        return
+    last = db.get_setting(conn, "review_mode")
+    rows = []
+    if last in MODE_LABEL:
+        rows.append([Btn(f"▶️ Như lần trước: {MODE_LABEL[last]}",
+                         callback_data=f"rv_mode:{last}")])
+    rows += [[Btn("🃏 Lật thẻ", callback_data="rv_mode:classic")],
+             [Btn("🔘 Trắc nghiệm", callback_data="rv_mc_levels")],
+             [Btn("⌨️ Tự luận", callback_data="rv_mode:typed")]]
+    await context.bot.send_message(chat_id, "Chọn chế độ ôn:", reply_markup=Markup(rows))
+
+
+async def start_session(context, chat_id, mode="classic", level="",
+                        practice=False, queue=None):
+    conn = context.bot_data["conn"]
+    queue = queue if queue is not None else cards.build_queue(conn, config.today_iso())
     if not queue:
         await context.bot.send_message(chat_id, "🎉 Không có thẻ nào đến hạn. Nghỉ ngơi đi!")
         return
-    db.kv_set(conn, "session", {"queue": queue, "pos": 0, "done": 0,
-                                "chat": chat_id, "msg": None, "aux": []})
+    db.kv_set(conn, "session", {"queue": queue, "pos": 0, "done": 0, "ok": 0,
+                                "chat": chat_id, "msg": None, "aux": [],
+                                "mode": mode, "level": level,
+                                "practice": practice, "q": None})
     await _show_front(context)
 
 
@@ -58,10 +82,14 @@ async def _edit_or_send(context, s, text, kb):
 async def _show_front(context):
     conn = context.bot_data["conn"]
     s = db.kv_get(conn, "session")
+    if s.get("mode", "classic") != "classic":
+        from app.bot import quiz_flow
+        await quiz_flow.show_question(context)
+        return
     cid = s["queue"][s["pos"]]
     row = cards.get_card(conn, cid)
     if row is None:  # thẻ đã bị xóa giữa chừng
-        await _advance(context)
+        await advance(context)
         return
     text = f"🀄 <b>{html.escape(row['hanzi'])}</b>\n\n({s['pos'] + 1}/{len(s['queue'])})"
     await _edit_or_send(context, s, text, _front_kb(cid))
@@ -102,7 +130,23 @@ async def on_callback(update, context):
     conn = context.bot_data["conn"]
     await q.answer()
     if q.data == "rv_start":
-        await start_session(context, q.message.chat_id)
+        await show_mode_picker(context, q.message.chat_id)
+        return
+    if q.data == "rv_mc_levels":
+        kb = Markup([[Btn("😌 Dễ", callback_data="rv_mode:mc:easy"),
+                      Btn("🙂 Thường", callback_data="rv_mode:mc:normal"),
+                      Btn("🔥 Khó", callback_data="rv_mode:mc:hard")]])
+        await q.edit_message_text("Chọn mức trắc nghiệm:", reply_markup=kb)
+        return
+    if q.data.startswith("rv_mode:"):
+        choice = q.data.split(":", 1)[1]          # classic | typed | mc:easy...
+        db.set_setting(conn, "review_mode", choice)
+        mode, _, level = choice.partition(":")
+        try:
+            await q.message.delete()
+        except TelegramError:
+            pass
+        await start_session(context, q.message.chat_id, mode=mode, level=level)
         return
     s = db.kv_get(conn, "session")
     if not s:
@@ -163,17 +207,25 @@ async def on_callback(update, context):
         await _advance(context)
 
 
-async def _advance(context):
+async def advance(context):
     conn = context.bot_data["conn"]
     s = db.kv_get(conn, "session")
     s["pos"] += 1
     if s["pos"] >= len(s["queue"]):
-        n = stats.streak(conn, config.today())
-        await _edit_or_send(
-            context, s,
-            f"🎉 <b>Hoàn thành!</b> Đã ôn {s['done']} lượt.\n🔥 Chuỗi: {n} ngày liên tiếp.",
-            None)
+        if s.get("practice"):
+            await _edit_or_send(
+                context, s,
+                f"🏁 <b>Luyện xong!</b> Đúng {s.get('ok', 0)}/{s['done']} câu.", None)
+        else:
+            n = stats.streak(conn, config.today())
+            await _edit_or_send(
+                context, s,
+                f"🎉 <b>Hoàn thành!</b> Đã ôn {s['done']} lượt.\n🔥 Chuỗi: {n} ngày liên tiếp.",
+                None)
         db.kv_del(conn, "session")
         return
     db.kv_set(conn, "session", s)
     await _show_front(context)
+
+
+_advance = advance
