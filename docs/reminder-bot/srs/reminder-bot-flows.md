@@ -40,9 +40,11 @@ flowchart TB
     Save --> Tts[Gọi edge-TTS sinh audio phát âm]
     Tts --> TtsOk{Tạo được audio?}
     TtsOk -->|không| NoAudio[Đánh dấu thiếu audio, tự thử lại khi ôn]
-    TtsOk -->|có| Ex[Đổ câu ví dụ của thẻ vào kho luyện tập]
-    NoAudio --> Ex
-    Ex --> Done[Báo đã lưu thẻ]
+    TtsOk -->|có| HasEx{Thẻ có câu ví dụ?}
+    NoAudio --> HasEx
+    HasEx -->|có| Ex[Đổ câu ví dụ vào kho luyện tập]
+    HasEx -->|không| Done[Báo đã lưu thẻ]
+    Ex --> Done
     Done --> End
 ```
 
@@ -59,11 +61,15 @@ flowchart TB
     Cmd --> Due{Có thẻ đến hạn?}
     Due -->|không| Rest[Bot báo không có thẻ nào đến hạn]
     Rest --> End((Kết thúc))
-    Due -->|có| Pick[Bạn chọn chế độ cho cả phiên: Lật thẻ, Trắc nghiệm kèm mức Dễ Thường Khó, hoặc Tự luận]
+    Due -->|có| Pick[Chọn chế độ cho cả phiên: Lật thẻ, Trắc nghiệm kèm mức Dễ Thường Khó, Tự luận, hoặc bấm lối tắt Như lần trước]
     Pick --> Ask{Hỏi thẻ theo chế độ nào?}
     Ask -->|Lật thẻ| Front[Hiện mặt trước chỉ có chữ Hán]
-    Front --> Show[Bạn bấm Xem đáp án, bot hiện pinyin, nghĩa và audio]
-    Show --> Self[Bạn tự chấm Lại, Khó, Tốt hoặc Dễ]
+    Front -->|Bấm nút Nghe| Sound[Phát audio phát âm, thẻ chưa có audio thì báo chưa có]
+    Sound --> Front
+    Front -->|Bấm Xem đáp án| Show[Hiện pinyin, nghĩa, audio và ảnh nếu có]
+    Show -->|Bấm Thu âm thử| Rec[Bạn gửi tin nhắn thoại, bot phát lại giọng chuẩn và giọng bạn để tự so]
+    Rec --> Show
+    Show -->|Tự chấm| Self[Bạn chọn Lại, Khó, Tốt hoặc Dễ]
     Self --> Apply[Cập nhật lịch ôn kế tiếp theo thuật toán SM-2]
     Ask -->|Trắc nghiệm| Opts{Gom đủ 3 đáp án nhiễu?}
     Opts -->|không| Front
@@ -71,10 +77,10 @@ flowchart TB
     Quiz --> Right{Chọn đúng?}
     Right -->|không| Wrong[Máy chấm Lại và chỉ ra đáp án đúng]
     Wrong --> Reveal[Hiện mặt sau đầy đủ kèm audio và ảnh nếu có]
-    Right -->|có| Fast{Trả lời nhanh cỡ nào?}
-    Fast -->|dưới 5 giây và đang ở mức Khó| Easy[Máy chấm Dễ]
-    Fast -->|trong vòng 15 giây| Good[Máy chấm Tốt]
-    Fast -->|lâu hơn 15 giây| Hard[Máy chấm Khó]
+    Right -->|có| Fast{Trả lời nhanh cỡ nào? Ngưỡng cấu hình được, mặc định 5 và 15 giây}
+    Fast -->|trong 5 giây và đang ở mức Khó| Easy[Máy chấm Dễ]
+    Fast -->|trong 15 giây| Good[Máy chấm Tốt]
+    Fast -->|trên 15 giây| Hard[Máy chấm Khó]
     Easy --> Reveal
     Good --> Reveal
     Hard --> Reveal
@@ -110,34 +116,50 @@ flowchart TB
     Start((Bắt đầu)) --> Cmd[Bạn gõ /luyen]
     Cmd --> Game{Chọn trò nào?}
     Game -->|Trắc nghiệm hoặc Tự luận| Deck[Chọn bộ thẻ, riêng trắc nghiệm chọn thêm mức]
-    Deck --> Enough{Đủ thẻ có nghĩa trong phạm vi?}
+    Deck --> Enough{Đủ thẻ có nghĩa? Trắc nghiệm cần ít nhất 4 thẻ, tự luận cần 1}
     Enough -->|không| Warn[Bot báo chưa đủ thẻ]
     Warn --> End((Kết thúc))
-    Enough -->|có| Quiz[Hỏi tối đa 10 thẻ ngẫu nhiên, báo đúng sai từng câu]
+    Enough -->|có| Quiz[Hỏi tối đa 10 thẻ ngẫu nhiên, chấm đúng sai từng câu, thẻ nào không gom đủ đáp án nhiễu thì bỏ qua]
     Quiz --> NoSrs[Chỉ ghi thống kê luyện tập, giữ nguyên lịch ôn của thẻ]
     NoSrs --> End
     Game -->|Chép chính tả| Bank{Kho câu có câu nào?}
     Bank -->|không| Guide[Hướng dẫn thêm câu ví dụ vào thẻ hoặc đặt Gemini key]
     Guide --> End
-    Bank -->|có| Play[Bot gửi audio một câu, bạn gõ lại bằng chữ Hán]
-    Play --> Match{Gõ đúng chưa?}
+    Bank -->|có| Snd{Tạo được audio cho câu?}
+    Snd -->|không| SndErr[Báo lỗi mạng và dừng lượt này]
+    SndErr --> End
+    Snd -->|có| Play[Bot gửi audio, bạn gõ lại bằng chữ Hán]
+    Play -->|Bấm Nghe lại| Play
+    Play -->|Bấm Bỏ qua| Bank
+    Play -->|Gõ câu trả lời| Match{Gõ đúng chưa?}
     Match -->|đúng| Ok[Khen đúng và hiện pinyin cùng nghĩa]
-    Ok --> NoSrs
+    Ok --> DStat[Ghi thống kê chính tả]
     Match -->|sai lần đầu| Diff[Chỉ ra từng ký tự sai và cho thử lại một lần]
     Diff --> Play
     Match -->|sai lần hai| Answer[Hiện đáp án đầy đủ]
-    Answer --> NoSrs
+    Answer --> DStat
+    DStat --> DNext{Bấm Câu tiếp hay Dừng?}
+    DNext -->|Câu tiếp| Bank
+    DNext -->|Dừng| End
     Game -->|Ghép câu| Words{Kho có câu đã tách sẵn từ?}
     Words -->|không| Guide
-    Words -->|có| Tap[Bạn bấm từng từ xếp thành câu rồi bấm Nộp]
-    Tap --> Same{Khớp đúng câu gốc?}
+    Words -->|có| Tap[Bấm từng từ để xếp thành câu]
+    Tap -->|Bấm Xóa từ cuối| Tap
+    Tap -->|Bấm Nộp khi chưa dùng hết từ| Toast[Nhắc dùng hết các từ rồi mới nộp]
+    Toast --> Tap
+    Tap -->|Bấm Bỏ qua| Reveal[Hiện câu gốc kèm pinyin và nghĩa]
+    Tap -->|Bấm Nộp| Same{Khớp đúng câu gốc?}
     Same -->|có| Correct[Báo chính xác]
-    Correct --> NoSrs
+    Correct --> BStat[Ghi thống kê ghép câu]
     Same -->|không| Alt{Gemini xác nhận trật tự vẫn hợp lệ?}
     Alt -->|có| AltOk[Báo cũng đúng kèm ghi chú]
     Alt -->|không| Nope[Báo chưa đúng và hiện câu gốc]
-    AltOk --> NoSrs
-    Nope --> NoSrs
+    AltOk --> BStat
+    Nope --> BStat
+    Reveal --> BNext
+    BStat --> BNext{Bấm Câu tiếp hay Dừng?}
+    BNext -->|Câu tiếp| Words
+    BNext -->|Dừng| End
 ```
 
 ## Flow: Nhắc học theo giờ (Activity)
@@ -150,20 +172,23 @@ flowchart TB
 ```mermaid
 flowchart TB
     Start((Đến mốc giờ đã đặt)) --> Which{Mốc giờ nào?}
-    Which -->|Nhắc thường: 7:30, 12:30, 20:00| Due{Có thẻ đến hạn?}
+    Which -->|Nhắc trong ngày, mặc định 7:30 12:30 20:00| Due{Có thẻ đến hạn?}
     Due -->|không| Quiet[Im lặng, không nhắn gì cả]
     Quiet --> End((Kết thúc))
-    Due -->|có| Ping[Nhắn số thẻ đến hạn kèm nút Ôn ngay]
+    Due -->|có| Ping[Nhắn số thẻ đến hạn kèm số thẻ mới và nút Ôn ngay]
     Ping --> Tap{Bạn bấm Ôn ngay?}
     Tap -->|có| Session[Mở phiên ôn tập]
     Session --> End
     Tap -->|không| End
-    Which -->|Nhắc cuối ngày lúc 21:30| Did{Hôm nay đã ôn câu nào chưa?}
+    Which -->|Nhắc cuối ngày, mặc định 21:30, tắt được trong settings| Did{Hôm nay đã ôn câu nào chưa?}
     Did -->|rồi| Quiet
     Did -->|chưa| Left{Còn thẻ đến hạn?}
     Left -->|không| Quiet
-    Left -->|có| Streak[Nhắn cảnh báo sắp mất chuỗi ngày học liên tiếp]
-    Streak --> Tap
+    Left -->|có| Streak{Đang có chuỗi ngày học?}
+    Streak -->|có| Flame[Nhắn cảnh báo sắp mất chuỗi kèm số thẻ còn chờ]
+    Streak -->|chưa có| Plain[Nhắn nhắc nhẹ kèm số thẻ còn chờ]
+    Flame --> Tap
+    Plain --> Tap
 ```
 
 ## Flow: Nhập thẻ hàng loạt từ CSV (Activity)
@@ -179,21 +204,23 @@ flowchart TB
     Send --> Enc{File đọc được dạng UTF-8?}
     Enc -->|không| Err[Báo lỗi và nhắc lưu lại file bằng UTF-8]
     Err --> End((Kết thúc))
-    Enc -->|có| Head{Dòng đầu có cột hán?}
-    Head -->|không| Err2[Báo thiếu cột hán trong dòng tiêu đề]
-    Err2 --> End
-    Head -->|có| Deck[Bạn chọn bộ thẻ đích]
-    Deck --> Row[Đọc từng dòng dữ liệu]
-    Row --> Blank{Dòng có chữ Hán?}
-    Blank -->|không| Skip[Ghi nhận dòng lỗi rồi bỏ qua]
-    Skip --> Next{Còn dòng nào nữa?}
-    Blank -->|có| Exist{Thẻ này đã có trong kho?}
+    Enc -->|có| Deck[Bạn chọn bộ thẻ đích]
+    Deck --> Head{Dòng đầu có cột hán?}
+    Head -->|không| Report[Báo cáo số thẻ mới, thẻ trùng, câu đã thêm và các dòng lỗi]
+    Head -->|có| Row[Đọc từng dòng dữ liệu]
+    Row --> Blank{Dòng có dữ liệu?}
+    Blank -->|không| Empty[Bỏ qua lặng lẽ, không tính là dòng lỗi]
+    Empty --> Next{Còn dòng nào nữa?}
+    Blank -->|có| HasHan{Ô chữ Hán có nội dung?}
+    HasHan -->|không| BadRow[Ghi nhận dòng lỗi để báo cáo cuối]
+    BadRow --> Next
+    HasHan -->|có| Exist{Thẻ này đã có trong kho?}
     Exist -->|có| Dup[Bỏ qua vì trùng]
     Dup --> Ex[Đổ câu ở cột ví dụ và ví dụ thêm vào kho luyện tập]
     Exist -->|không| Create[Tạo thẻ mới, tự tra phần bỏ trống và sinh audio]
     Create --> Ex
     Ex --> Next
     Next -->|có| Row
-    Next -->|không| Report[Báo cáo số thẻ mới, thẻ trùng, câu đã thêm và các dòng lỗi]
+    Next -->|không| Report
     Report --> End
 ```
