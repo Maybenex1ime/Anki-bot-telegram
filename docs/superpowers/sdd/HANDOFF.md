@@ -5,9 +5,10 @@
 ## Trạng thái
 
 - **Phase 1 (bot SRS lõi, Task 1–18/18):** đã code xong, qua final whole-branch review (**Ready to merge: Yes**) và **ĐÃ DEPLOY LÊN FLY.IO, đang chạy 24/7** — app `reminder-zh-bot`, region `sin`, machine `683d61df269398`, volume `reminder_data`. Bot đã nhận lệnh thật từ owner (kể cả import CSV).
-- **Phase 2 (chế độ luyện tập, P2 T1–13/13):** đã **code xong** trên nền phase-1 đã deploy — thêm lệnh `/luyen` (trắc nghiệm / tự luận / chính tả / ghép câu, không tác động lịch SM-2), tích hợp Gemini (MCQ nhiễu, chấm tự luận 2 tầng, sinh câu ví dụ) với fallback offline, khối thống kê luyện tập 7 ngày trong `/thongke`, và settings cho Gemini key/model + ngưỡng giờ quiz.
-- **Chờ:** final whole-branch review cho phase 2 → **test tay Telegram** (kịch bản 9 bước trong plan Task 13 Step 5) → `fly deploy`.
-- Test: `python -m pytest tests/ -q` → **58 passed** (local Python).
+- **Phase 2 (chế độ luyện tập, P2 T1–13/13):** code xong, final whole-branch review **Ready to merge: Yes** (`docs/superpowers/sdd/p2-final-review.md`), qua thêm một lượt `/simplify` (commit `a3c4ae1`), và **ĐÃ DEPLOY 2026-07-23 07:16Z** (release version 3, image `deployment-01KY6X9FDGMHXVZ3CYP1WWMN7Y`). Thêm `/luyen` (trắc nghiệm / tự luận / chính tả / ghép câu, không tác động lịch SM-2), tích hợp Gemini (MCQ nhiễu, chấm tự luận 2 tầng, sinh câu) với fallback offline, thống kê luyện tập 7 ngày trong `/thongke`, settings Gemini key/model + ngưỡng giờ quiz.
+- **Xác minh sau deploy:** log khởi động sạch (scheduler đặt lại 4 job, polling chạy); **không** có dòng "Đã nạp CC-CEDICT" → bảng từ điển cũ còn nguyên; volume `/data` 19M/974M, `reminder.db` 15.1MB được ghi lúc 07:19 → migration additive chạy, không mất dữ liệu.
+- **Chờ:** test tay Telegram (9 bước trong plan Task 13 Step 5 + 8 ca bổ sung trong `p2-final-review.md`) — làm trực tiếp trên bot đang chạy.
+- Test tự động: `python -m pytest tests/ -q` → **58 passed** (local Python).
 
 ## Sự cố đã xử lý (2026-07-22)
 
@@ -18,7 +19,9 @@
 
 ## Việc còn lại (cần chủ dự án)
 
-1. **Test thủ công Telegram**: (a) phase-2 chạy kịch bản 9 bước trong plan Task 13 Step 5 (`/luyen` 3 chế độ, Gemini bật/tắt, restart giữa câu); (b) phase-1 3 ca chưa ai chạy: xóa thẻ giữa phiên ôn, double-tap nút chấm điểm, boot đầu nạp CC-CEDICT (đã qua trên Fly).
+1. **Test thủ công Telegram trên bot đang chạy**: (a) phase-2 kịch bản 9 bước trong plan Task 13 Step 5 + 8 ca bổ sung trong `p2-final-review.md`; (b) phase-1 3 ca chưa ai chạy: xóa thẻ giữa phiên ôn, double-tap nút chấm điểm, boot đầu nạp CC-CEDICT (đã qua trên Fly).
+   - Lùi bản nếu hỏng: `flyctl releases -a reminder-zh-bot` rồi `flyctl deploy --image registry.fly.io/reminder-zh-bot:<deployment-cũ>`. Bản trước phase 2 là version 2 (`deployment-01KY5AKFV9EM5X5Y14Y5C8F7EZ`).
+1b. **Bật Gemini (tùy chọn)**: lấy key miễn phí tại aistudio.google.com → `/settings` → 🤖 Gemini key (bot tự xóa tin nhắn chứa key). Không có key thì mọi chế độ vẫn chạy offline.
 2. Tùy chọn: gọi `set_my_commands` / khai lệnh với @BotFather để menu "/" của Telegram hiện gợi ý lệnh (hiện gõ tay vẫn chạy bình thường — chưa có trong code).
 3. Quyết định merge/PR cho `feature/srs-bot`.
 4. `.github/workflows/fly-deploy.yml` (flyctl tạo) auto-deploy khi push nhánh `main` — muốn dùng thì thêm secret `FLY_API_TOKEN` vào GitHub repo (`fly tokens create deploy`); không dùng thì xóa file.
@@ -27,7 +30,10 @@
 
 - Chi phí Fly ước tính ~$2.4/tháng (máy 256MB 24/7 + volume 1GB); hóa đơn <$5 thường được Fly miễn thu.
 - Backup: lệnh `/backup` trong bot gửi file `reminder.db` về chat.
-- Log: `fly logs -a reminder-zh-bot`; trạng thái: `fly status -a reminder-zh-bot` (flyctl tại `~\.fly\bin\`).
+- Log: `flyctl logs -a reminder-zh-bot`; trạng thái: `flyctl status -a reminder-zh-bot`.
+- flyctl: máy cũ ở `~\.fly\bin\`; máy D:\Reminder hiện tại cài qua `winget install --id Fly-io.flyctl` (nằm trong `%LOCALAPPDATA%\Microsoft\WinGet\Packages\Fly-io.flyctl_*\flyctl.exe`).
+- `flyctl ssh console -C` tách tham số theo dấu cách và PowerShell nuốt dấu nháy → chỉ chạy được lệnh không có dấu nháy (VD `ls -la /data`); muốn chạy script thì upload trước.
+- Push GitHub từ máy này: `$env:GCM_INTERACTIVE='always'; $env:GIT_TERMINAL_PROMPT='1'; git -c credential.interactive=always push`.
 
 ## Tài liệu
 
