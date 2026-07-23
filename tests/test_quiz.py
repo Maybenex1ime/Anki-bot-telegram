@@ -67,6 +67,28 @@ async def test_not_enough_cards_returns_none(conn, monkeypatch):
     assert await quiz.get_options(conn, row, "easy") is None
 
 
+async def test_negative_cache_no_rederive(conn, monkeypatch):
+    calls = {"n": 0}
+
+    async def counting_gemini(*a, **k):
+        calls["n"] += 1
+        return None
+
+    monkeypatch.setattr("app.quiz.gemini.make_distractors", counting_gemini)
+    row = (await _seed(conn, 1))[0]
+
+    assert await quiz.get_options(conn, row, "easy") is None
+    # negative cache persisted as "[]"
+    cached = conn.execute(
+        "SELECT options_json FROM distractors WHERE card_id=? AND level=?",
+        (row["id"], "easy")).fetchone()
+    assert cached is not None
+    assert cached["options_json"] == "[]"
+
+    # second call hits cache, does NOT re-derive
+    assert await quiz.get_options(conn, row, "easy") is None
+
+
 async def test_distractor_never_equals_correct(conn, monkeypatch):
     async def echo_gemini(conn_, h, m, level):
         return ["to learn", "to study", "to teach"]  # 2 cái trùng nghĩa đúng
