@@ -2,7 +2,7 @@ from datetime import date
 
 import pytest
 
-from app import cards, db, srs, stats
+from app import cards, config, db, srs, stats
 
 
 @pytest.fixture
@@ -48,7 +48,7 @@ async def test_tts_failure_leaves_audio_empty(conn, monkeypatch):
 async def test_queue_reviews_first_then_new_with_limit(conn):
     db.set_setting(conn, "new_per_day", "2")
     ids = [(await cards.create_card(conn, h))["id"] for h in "一二三四"]
-    today = date(2026, 7, 22)
+    today = config.today()
     cards.apply_rating(conn, ids[0], srs.AGAIN, today)  # thành review, due hôm nay
     q = cards.build_queue(conn, today.isoformat())
     assert q[0] == ids[0]      # review đứng trước
