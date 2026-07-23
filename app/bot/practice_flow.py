@@ -34,13 +34,16 @@ def _practice_queue(conn, deck_id, n=10):
 async def on_callback(update, context):
     q = update.callback_query
     conn = context.bot_data["conn"]
-    await q.answer()
+    # Ack once per path (pr_b_sub's unused-words guard needs its own toast text),
+    # so no double-answer — mirror quiz_flow.on_callback.
     data = q.data
 
     if data == "pr_menu":
+        await q.answer()
         await q.edit_message_text("🏋️ Chọn trò:", reply_markup=MENU)
 
     elif data.startswith("pr_quiz:"):
+        await q.answer()
         mode = data.split(":")[1]
         decks = conn.execute(
             "SELECT d.id, d.name, COUNT(c.id) n FROM decks d "
@@ -52,6 +55,7 @@ async def on_callback(update, context):
         await q.edit_message_text("Luyện bộ nào?", reply_markup=Markup(kb))
 
     elif data.startswith("pr_qd:"):
+        await q.answer()
         _, mode, deck_id = data.split(":")
         if mode == "typed":
             await _start_quiz(context, q, "typed", "", int(deck_id))
@@ -62,10 +66,12 @@ async def on_callback(update, context):
             await q.edit_message_text("Chọn mức:", reply_markup=kb)
 
     elif data.startswith("pr_ql:"):
+        await q.answer()
         _, deck_id, level = data.split(":")
         await _start_quiz(context, q, "mc", level, int(deck_id))
 
     elif data == "pr_dict":
+        await q.answer()
         try:
             await q.message.delete()
         except Exception:
@@ -73,6 +79,7 @@ async def on_callback(update, context):
         await _dict_next(context, q.message.chat_id)
 
     elif data == "pr_d_repeat":
+        await q.answer()
         st = db.kv_get(conn, "dict_state")
         if st:
             srow = conn.execute("SELECT * FROM sentences WHERE id=?", (st["sid"],)).fetchone()
@@ -80,6 +87,7 @@ async def on_callback(update, context):
                 await sentences.send_audio(context, st["chat"], srow)
 
     elif data == "pr_d_next":
+        await q.answer()
         db.kv_del(conn, "dict_state")
         pi = db.kv_get(conn, "pending_input")
         if pi and pi.get("action") == "dictation":
@@ -87,6 +95,7 @@ async def on_callback(update, context):
         await _dict_next(context, q.message.chat_id)
 
     elif data == "pr_d_stop":
+        await q.answer()
         db.kv_del(conn, "dict_state")
         pi = db.kv_get(conn, "pending_input")
         if pi and pi.get("action") == "dictation":
@@ -94,6 +103,7 @@ async def on_callback(update, context):
         await q.edit_message_text("🏁 Nghỉ chính tả. /luyen để chơi tiếp.")
 
     elif data == "pr_build":
+        await q.answer()
         try:
             await q.message.delete()
         except Exception:
@@ -101,6 +111,7 @@ async def on_callback(update, context):
         await _build_next(context, q.message.chat_id)
 
     elif data.startswith("pr_b_w:"):
+        await q.answer()
         st = db.kv_get(conn, "build_state")
         if not st:
             return
@@ -112,6 +123,7 @@ async def on_callback(update, context):
         await _build_render(context, st, srow)
 
     elif data == "pr_b_undo":
+        await q.answer()
         st = db.kv_get(conn, "build_state")
         if not st or not st["chosen"]:
             return
@@ -122,11 +134,13 @@ async def on_callback(update, context):
     elif data == "pr_b_sub":
         st = db.kv_get(conn, "build_state")
         if not st:
+            await q.answer()
             return
         srow = conn.execute("SELECT * FROM sentences WHERE id=?", (st["sid"],)).fetchone()
         if len(st["chosen"]) < len(st["words"]):
             await q.answer("Dùng hết các từ đã rồi nộp nhé!", show_alert=False)
             return
+        await q.answer()
         attempt = "".join(st["words"][i] for i in st["chosen"])
         original = grading.normalize_hanzi(srow["hanzi"])
         db.kv_del(conn, "build_state")
@@ -151,6 +165,7 @@ async def on_callback(update, context):
             parse_mode="HTML", reply_markup=BUILD_NEXT_KB)
 
     elif data == "pr_b_skip":
+        await q.answer()
         st = db.kv_get(conn, "build_state")
         db.kv_del(conn, "build_state")
         if st:
@@ -160,6 +175,7 @@ async def on_callback(update, context):
                                           parse_mode="HTML", reply_markup=BUILD_NEXT_KB)
 
     elif data == "pr_b_next":
+        await q.answer()
         try:
             await q.message.delete()
         except Exception:
@@ -167,6 +183,7 @@ async def on_callback(update, context):
         await _build_next(context, q.message.chat_id)
 
     elif data == "pr_b_stop":
+        await q.answer()
         db.kv_del(conn, "build_state")
         await q.edit_message_text("🏁 Nghỉ ghép câu. /luyen để chơi tiếp.")
 
