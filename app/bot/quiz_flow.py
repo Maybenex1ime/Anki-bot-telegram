@@ -30,9 +30,54 @@ async def _send_back_aux(context, s, row):
         s["aux"].append(m.message_id)
 
 
-# Task 9 sẽ thay bằng bản đầy đủ; stub tạm để imports/calls không vỡ.
 async def _show_typed(context, s, row):
-    await review_flow._edit_or_send(context, s, "⚠️ Tự luận đang được xây.", None)
+    conn = context.bot_data["conn"]
+    s["q"] = {"kind": "typed", "asked_at": time.time()}
+    db.kv_set(conn, "session", s)
+    db.kv_set(conn, "pending_input", {"action": "quiz_typed", "cid": row["id"]})
+    text = (f"🀄 <b>{html.escape(row['hanzi'])}</b>\n\n"
+            f"⌨️ Gõ nghĩa tiếng Anh của từ này:\n\n({s['pos'] + 1}/{len(s['queue'])})")
+    kb = Markup([[Btn("🔊 Nghe", callback_data=f"rv_listen:{row['id']}")]])
+    await review_flow._edit_or_send(context, s, text, kb)
+
+
+async def typed_input(update, context, pending, text):
+    conn = context.bot_data["conn"]
+    s = db.kv_get(conn, "session")
+    cid = pending.get("cid")
+    if (not s or s.get("mode") != "typed" or (s.get("q") or {}).get("kind") != "typed"
+            or s["pos"] >= len(s["queue"]) or s["queue"][s["pos"]] != cid):
+        return
+    row = cards.get_card(conn, cid)
+    if row is None:
+        await review_flow.advance(context)
+        return
+    s["aux"].append(update.message.message_id)      # dọn tin trả lời khi sang câu
+    verdict, note = grading.grade_typed_offline(row["meaning"], text), ""
+    if verdict == "unsure":
+        g = await gemini.judge_meaning(conn, row["hanzi"], row["meaning"], text)
+        if g:
+            verdict, note = g["verdict"], g["note"]
+        else:
+            verdict = grading.fallback_partial(row["meaning"], text)
+    correct = verdict == "correct"
+    s["done"] += 1
+    extra = []
+    if correct:
+        s["ok"] += 1
+        header, rating = "✅ Đúng!", srs.GOOD
+        if not s["practice"]:
+            extra = [Btn("😎 Dễ", callback_data=f"qz_easy:{cid}")]
+    elif verdict == "partial":
+        header, rating = "🟡 Đúng một phần.", srs.HARD
+    else:
+        header, rating = "❌ Chưa đúng.", srs.AGAIN
+    if note:
+        header += f"\n💡 {html.escape(note)}"
+    if s["practice"]:
+        stats.bump_practice(conn, config.today_iso(), "typed", correct)
+        rating = None
+    await _reveal(context, s, row, header, rating, extra_buttons=extra)
 
 
 async def show_question(context):
@@ -98,17 +143,20 @@ async def _reveal(context, s, row, header, rating, extra_buttons=None):
 async def on_callback(update, context):
     q = update.callback_query
     conn = context.bot_data["conn"]
-    await q.answer()
+    # Ack once per path (qz_easy needs its own toast text), so no double-answer.
     s = db.kv_get(conn, "session")
     if not s:
+        await q.answer()
         await q.edit_message_text("Phiên đã kết thúc. Gõ /on hoặc /luyen.")
         return
     parts = q.data.split(":")
     action, cid = parts[0], int(parts[1])
     if s["pos"] >= len(s["queue"]) or s["queue"][s["pos"]] != cid:
+        await q.answer()
         return                                       # stale/double-tap
     row = cards.get_card(conn, cid)
     if row is None:
+        await q.answer()
         await review_flow._clear_aux(context, s)
         db.kv_set(conn, "session", s)
         await review_flow.advance(context)
@@ -117,7 +165,9 @@ async def on_callback(update, context):
     if action == "qz_ans":
         qst = s.get("q") or {}
         if qst.get("kind") != "mc":
+            await q.answer()
             return
+        await q.answer()
         idx = int(parts[2])
         correct = idx == qst["correct"]
         elapsed = time.time() - qst["asked_at"]
@@ -139,7 +189,9 @@ async def on_callback(update, context):
     elif action == "qz_next":
         qst = s.get("q") or {}
         if qst.get("kind") != "reveal":
+            await q.answer()
             return
+        await q.answer()
         rating = qst.get("rating")
         if rating is not None and not s["practice"]:
             cards.apply_rating(conn, cid, rating, config.today())
@@ -149,3 +201,13 @@ async def on_callback(update, context):
         s["q"] = None
         db.kv_set(conn, "session", s)
         await review_flow.advance(context)
+
+    elif action == "qz_easy":
+        qst = s.get("q") or {}
+        if qst.get("kind") != "reveal" or qst.get("rating") != srs.GOOD:
+            await q.answer()
+            return
+        qst["rating"] = srs.EASY
+        s["q"] = qst
+        db.kv_set(conn, "session", s)
+        await q.answer("😎 Sẽ tính là Dễ")

@@ -222,6 +222,9 @@ async def advance(context):
                 context, s,
                 f"🎉 <b>Hoàn thành!</b> Đã ôn {s['done']} lượt.\n🔥 Chuỗi: {n} ngày liên tiếp.",
                 None)
+        pi = db.kv_get(conn, "pending_input")
+        if pi and pi.get("action") == "quiz_typed":
+            db.kv_del(conn, "pending_input")
         db.kv_del(conn, "session")
         return
     db.kv_set(conn, "session", s)
