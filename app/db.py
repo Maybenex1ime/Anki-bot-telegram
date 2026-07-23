@@ -42,6 +42,33 @@ CREATE TABLE IF NOT EXISTS dict_entries(
 CREATE INDEX IF NOT EXISTS idx_dict_simp ON dict_entries(simplified);
 CREATE INDEX IF NOT EXISTS idx_dict_trad ON dict_entries(traditional);
 CREATE TABLE IF NOT EXISTS kv(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS sentences(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  hanzi TEXT NOT NULL,
+  norm TEXT NOT NULL UNIQUE,
+  words_json TEXT NOT NULL DEFAULT '',
+  pinyin TEXT NOT NULL DEFAULT '',
+  meaning TEXT NOT NULL DEFAULT '',
+  source TEXT NOT NULL DEFAULT 'gemini',
+  card_id INTEGER,
+  audio_path TEXT NOT NULL DEFAULT '',
+  audio_file_id TEXT NOT NULL DEFAULT '',
+  times_used INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS distractors(
+  card_id INTEGER NOT NULL,
+  level TEXT NOT NULL,
+  options_json TEXT NOT NULL,
+  PRIMARY KEY(card_id, level)
+);
+CREATE TABLE IF NOT EXISTS practice_log(
+  day TEXT NOT NULL,
+  mode TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  correct INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY(day, mode)
+);
 """
 
 

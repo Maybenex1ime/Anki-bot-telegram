@@ -50,3 +50,19 @@ def overview(conn, today_iso):
         "streak": streak(conn, date.fromisoformat(today_iso)),
         "total_reviews": total_reviews, "total_lapses": total_lapses,
     }
+
+
+def bump_practice(conn, day_iso, mode, correct):
+    conn.execute(
+        "INSERT INTO practice_log(day, mode, attempts, correct) VALUES(?, ?, 1, ?) "
+        "ON CONFLICT(day, mode) DO UPDATE SET attempts=attempts+1, "
+        "correct=correct+excluded.correct",
+        (day_iso, mode, 1 if correct else 0))
+    conn.commit()
+
+
+def practice_summary(conn, since_iso):
+    rows = conn.execute(
+        "SELECT mode, SUM(attempts) a, SUM(correct) c FROM practice_log "
+        "WHERE day>=? GROUP BY mode", (since_iso,)).fetchall()
+    return {r["mode"]: (r["a"], r["c"]) for r in rows}

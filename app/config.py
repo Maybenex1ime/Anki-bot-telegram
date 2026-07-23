@@ -15,6 +15,12 @@ DEFAULT_SETTINGS = {
     "evening_nudge": "21:30",
     "new_per_day": "20",
     "tts_voice": "zh-CN-XiaoxiaoNeural",
+    "review_mode": "",
+    "quiz_fast_sec": "5",
+    "quiz_slow_sec": "15",
+    "gemini_api_key": "",
+    "gemini_model": "gemini-2.5-flash",
+    "max_sentences": "3000",
 }
 
 
