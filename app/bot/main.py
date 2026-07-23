@@ -6,8 +6,8 @@ from telegram.ext import (Application, CallbackQueryHandler, CommandHandler,
 
 from app import config, db, lookup
 from app.bot import (create_flow, csv_flow, decks_flow, manage_flow, misc,
-                     quiz_flow, reminders, review_flow, settings_flow,
-                     textrouter, voice_flow)
+                     practice_flow, quiz_flow, reminders, review_flow,
+                     settings_flow, textrouter, voice_flow)
 from app.bot.auth import owner_filter
 from app.bot.textrouter import register
 
@@ -44,6 +44,8 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("csv", csv_flow.cmd_csv, filters=owner_filter))
     app.add_handler(CommandHandler("thongke", misc.cmd_stats, filters=owner_filter))
     app.add_handler(CommandHandler("backup", misc.cmd_backup, filters=owner_filter))
+    app.add_handler(CommandHandler("luyen", practice_flow.cmd_practice, filters=owner_filter))
+    app.add_handler(CallbackQueryHandler(practice_flow.on_callback, pattern=r"^pr_"))
     app.add_handler(CallbackQueryHandler(create_flow.on_callback, pattern=r"^pc_"))
     app.add_handler(CallbackQueryHandler(review_flow.on_callback, pattern=r"^rv_"))
     app.add_handler(CallbackQueryHandler(quiz_flow.on_callback, pattern=r"^qz_"))
