@@ -1,13 +1,13 @@
 # Handoff — trạng thái dự án
 
-**Cập nhật:** 2026-07-22 (đêm) · **Branch:** `feature/srs-bot`
+**Cập nhật:** 2026-07-23 · **Branch:** `feature/srs-bot`
 
 ## Trạng thái
 
-- **Hoàn thành: Task 1–18 / 18** — mỗi task qua review riêng, mọi finding ≥ Important đã sửa và re-review.
-- **Final whole-branch review:** verdict **Ready to merge: Yes** (sau fix `5bbcfde`: guard double-tap chấm điểm, guard thẻ bị xóa giữa phiên, `total_reviews` tính từ `daily_log`, chống gửi trùng khi "message not modified").
-- **ĐÃ DEPLOY LÊN FLY.IO và đang chạy**: app `reminder-zh-bot`, region `sin`, machine `683d61df269398`, volume `reminder_data`. Bot đã nhận lệnh thật từ owner (kể cả import CSV).
-- Test: `python -m pytest tests/ -v` → **31 passed** (venv local: `.venv\Scripts\python.exe`).
+- **Phase 1 (bot SRS lõi, Task 1–18/18):** đã code xong, qua final whole-branch review (**Ready to merge: Yes**) và **ĐÃ DEPLOY LÊN FLY.IO, đang chạy 24/7** — app `reminder-zh-bot`, region `sin`, machine `683d61df269398`, volume `reminder_data`. Bot đã nhận lệnh thật từ owner (kể cả import CSV).
+- **Phase 2 (chế độ luyện tập, P2 T1–13/13):** đã **code xong** trên nền phase-1 đã deploy — thêm lệnh `/luyen` (trắc nghiệm / tự luận / chính tả / ghép câu, không tác động lịch SM-2), tích hợp Gemini (MCQ nhiễu, chấm tự luận 2 tầng, sinh câu ví dụ) với fallback offline, khối thống kê luyện tập 7 ngày trong `/thongke`, và settings cho Gemini key/model + ngưỡng giờ quiz.
+- **Chờ:** final whole-branch review cho phase 2 → **test tay Telegram** (kịch bản 9 bước trong plan Task 13 Step 5) → `fly deploy`.
+- Test: `python -m pytest tests/ -q` → **58 passed** (local Python).
 
 ## Sự cố đã xử lý (2026-07-22)
 
@@ -18,7 +18,7 @@
 
 ## Việc còn lại (cần chủ dự án)
 
-1. **Test thủ công Telegram** các kịch bản trong plan (Tasks 8–17), ưu tiên 3 ca chưa ai chạy: xóa thẻ giữa phiên ôn, double-tap nút chấm điểm, boot đầu nạp CC-CEDICT (đã qua trên Fly).
+1. **Test thủ công Telegram**: (a) phase-2 chạy kịch bản 9 bước trong plan Task 13 Step 5 (`/luyen` 3 chế độ, Gemini bật/tắt, restart giữa câu); (b) phase-1 3 ca chưa ai chạy: xóa thẻ giữa phiên ôn, double-tap nút chấm điểm, boot đầu nạp CC-CEDICT (đã qua trên Fly).
 2. Tùy chọn: gọi `set_my_commands` / khai lệnh với @BotFather để menu "/" của Telegram hiện gợi ý lệnh (hiện gõ tay vẫn chạy bình thường — chưa có trong code).
 3. Quyết định merge/PR cho `feature/srs-bot`.
 4. `.github/workflows/fly-deploy.yml` (flyctl tạo) auto-deploy khi push nhánh `main` — muốn dùng thì thêm secret `FLY_API_TOKEN` vào GitHub repo (`fly tokens create deploy`); không dùng thì xóa file.

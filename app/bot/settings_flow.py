@@ -15,15 +15,22 @@ _TIME = re.compile(r"^([01]?\d|2[0-3]):[0-5]\d$")
 
 def _view(conn):
     e = lambda k: html.escape(str(db.get_setting(conn, k)))
+    key = db.get_setting(conn, "gemini_api_key")
+    masked = (key[:4] + "..." + "*" * 4) if key else "(chưa đặt — chế độ offline)"
     text = ("⚙️ <b>Cài đặt</b>\n"
             f"⏰ Giờ nhắc: {e('reminder_times')}\n"
             f"🌙 Nhắc cuối ngày: {e('evening_nudge')}\n"
             f"🆕 Thẻ mới/ngày: {e('new_per_day')}\n"
-            f"🗣 Giọng đọc: {e('tts_voice')}")
+            f"🗣 Giọng đọc: {e('tts_voice')}\n"
+            f"🤖 Gemini: {html.escape(masked)} · model {e('gemini_model')}\n"
+            f"⏱ Ngưỡng trắc nghiệm: {e('quiz_fast_sec')}s / {e('quiz_slow_sec')}s")
     kb = Markup([[Btn("⏰ Giờ nhắc", callback_data="st_times"),
                   Btn("🌙 Cuối ngày", callback_data="st_nudge")],
                  [Btn("🆕 Thẻ mới/ngày", callback_data="st_newlimit"),
-                  Btn("🗣 Giọng đọc", callback_data="st_voice")]])
+                  Btn("🗣 Giọng đọc", callback_data="st_voice")],
+                 [Btn("🤖 Gemini key", callback_data="st_gemkey"),
+                  Btn("🧠 Model", callback_data="st_gmodel")],
+                 [Btn("⏱ Ngưỡng giờ quiz", callback_data="st_quiztime")]])
     return text, kb
 
 
@@ -48,6 +55,19 @@ async def on_callback(update, context):
     elif q.data == "st_newlimit":
         db.kv_set(conn, "pending_input", {"action": "set_newlimit"})
         await context.bot.send_message(q.message.chat_id, "Nhập số thẻ mới tối đa mỗi ngày (0–200):")
+    elif q.data == "st_gemkey":
+        db.kv_set(conn, "pending_input", {"action": "set_gemkey"})
+        await context.bot.send_message(
+            q.message.chat_id,
+            "Dán Gemini API key (tạo miễn phí tại aistudio.google.com), hoặc gõ off để xóa:")
+    elif q.data == "st_gmodel":
+        db.kv_set(conn, "pending_input", {"action": "set_gmodel"})
+        await context.bot.send_message(
+            q.message.chat_id, "Nhập tên model (mặc định gemini-2.5-flash):")
+    elif q.data == "st_quiztime":
+        db.kv_set(conn, "pending_input", {"action": "set_quiztime"})
+        await context.bot.send_message(
+            q.message.chat_id, "Nhập 2 số giây fast,slow (VD: 5,15):")
     elif q.data == "st_voice":
         kb = Markup([[Btn(v, callback_data=f"st_voice_set:{v}")] for v in VOICES])
         await q.edit_message_text("Chọn giọng đọc:", reply_markup=kb)
@@ -87,3 +107,33 @@ async def newlimit_input(update, context, pending, text):
         return
     db.set_setting(conn, "new_per_day", text.strip())
     await update.message.reply_text(f"✅ Giới hạn thẻ mới/ngày: {text.strip()}")
+
+
+async def gemkey_input(update, context, pending, text):
+    conn = context.bot_data["conn"]
+    v = text.strip()
+    db.set_setting(conn, "gemini_api_key", "" if v.lower() == "off" else v)
+    try:
+        await update.message.delete()       # không để key nằm lại trong chat
+    except Exception:
+        pass
+    await update.effective_chat.send_message(
+        "✅ Đã cập nhật Gemini API key." if v.lower() != "off" else "✅ Đã xóa key — chạy offline.")
+
+
+async def gmodel_input(update, context, pending, text):
+    conn = context.bot_data["conn"]
+    db.set_setting(conn, "gemini_model", text.strip() or "gemini-2.5-flash")
+    await update.message.reply_text(f"✅ Model: {text.strip() or 'gemini-2.5-flash'}")
+
+
+async def quiztime_input(update, context, pending, text):
+    conn = context.bot_data["conn"]
+    parts = [p.strip() for p in text.split(",")]
+    if len(parts) != 2 or not all(p.isdigit() for p in parts) \
+            or not (0 < int(parts[0]) < int(parts[1]) <= 120):
+        await update.message.reply_text("⚠️ Nhập dạng fast,slow (0 < fast < slow ≤ 120). VD: 5,15")
+        return
+    db.set_setting(conn, "quiz_fast_sec", parts[0])
+    db.set_setting(conn, "quiz_slow_sec", parts[1])
+    await update.message.reply_text(f"✅ Ngưỡng: {parts[0]}s / {parts[1]}s")
