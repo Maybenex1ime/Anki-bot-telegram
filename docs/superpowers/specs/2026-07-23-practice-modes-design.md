@@ -75,7 +75,8 @@ Bảng mới: `id, hanzi TEXT, words_json TEXT (mảng từ đã tách, '' nếu
 
 - **Nạp từ Gemini:** khi số câu chưa dùng < 10 → gọi `gen_sentences(vocab, n=10)` chạy ngầm: câu 4–10 từ, chỉ dùng từ trong bộ thẻ + từ chức năng (的/了/吗/在/是/我/你...), trả JSON gồm hanzi + words + pinyin + meaning. Kết quả lọc trùng (hanzi đã có trong kho thì bỏ).
 - **Nạp từ ví dụ:** câu ở trường ví dụ của thẻ (tạo tay hoặc CSV) tự nhập kho với `source='example'`, `card_id` trỏ về thẻ; Gemini tách từ + dịch bổ sung ngầm (`words_json`/`pinyin`/`meaning` điền sau); chưa tách → vẫn dùng được cho chính tả, ghép câu bỏ qua.
-- Audio câu: edge-tts + cache file/`file_id` (bảng sentences thêm cột `audio_path`, `audio_file_id`).
+- Audio câu: edge-tts + cache `file_id` (bảng sentences thêm cột `audio_path`, `audio_file_id`). **Tiết kiệm volume:** sau khi có `audio_file_id` (gửi lần đầu thành công), xóa file mp3 local và để `audio_path=''` — gửi lại bằng `file_id`; nếu `file_id` hỏng (Telegram trả lỗi) thì tái tạo bằng edge-tts. (Chỉ áp dụng audio câu; audio thẻ giữ hành vi cũ.)
+- **Giới hạn kho:** setting `max_sentences=3000` — đạt mức này thì `gen_sentences` không được gọi nữa (câu `source='example'` từ thẻ/CSV vẫn luôn được nhận, không tính giới hạn chặn). Ước tính dung lượng: ~25 KB audio/câu → 3.000 câu ≈ 75 MB, cộng nền (DB+CEDICT+audio thẻ ~75 MB) vẫn <16% volume 1GB; với cơ chế xóa-mp3-sau-file_id, chiếm dụng dài hạn thực tế <10 MB.
 - Chọn câu cho phiên: ưu tiên `times_used` thấp, ngẫu nhiên trong nhóm.
 
 ## 7. Chép chính tả (`/luyen`)
@@ -115,7 +116,7 @@ hán,pinyin,nghĩa,ví_dụ,ví_dụ_thêm
 ## 11. Dữ liệu & cấu hình mới
 
 - Bảng: `sentences`, `distractors`, `practice_log(day, mode, attempts, correct)`.
-- Settings mới: `review_mode`, `quiz_fast_sec=5`, `quiz_slow_sec=15`, `gemini_api_key=''`, `gemini_model='gemini-2.5-flash'`.
+- Settings mới: `review_mode`, `quiz_fast_sec=5`, `quiz_slow_sec=15`, `gemini_api_key=''`, `gemini_model='gemini-2.5-flash'`, `max_sentences=3000`.
 - `/settings` thêm mục sửa các key trên (API key nhập qua pending_input, hiển thị dạng `AIza...****`).
 - `/thongke` thêm khối luyện tập (số câu đã luyện theo chế độ, tỉ lệ đúng 7 ngày).
 - Session kv mở rộng: `mode`, `level`, `asked_at` (epoch giây, tính giờ trắc nghiệm), state riêng chính tả/ghép câu (câu hiện tại, số lần thử, từ đã chọn).
