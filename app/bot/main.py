@@ -19,6 +19,7 @@ register("set_times", settings_flow.times_input)
 register("set_nudge", settings_flow.nudge_input)
 register("set_newlimit", settings_flow.newlimit_input)
 register("quiz_typed", quiz_flow.typed_input)
+register("dictation", practice_flow.dictation_input)
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(name)s %(levelname)s %(message)s")
