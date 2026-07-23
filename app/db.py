@@ -113,3 +113,10 @@ def kv_set(conn, key, value):
 def kv_del(conn, key):
     conn.execute("DELETE FROM kv WHERE key=?", (key,))
     conn.commit()
+
+
+def clear_pending(conn, action):
+    """Xóa pending_input nếu nó thuộc về `action` (không đụng của luồng khác)."""
+    pending = kv_get(conn, "pending_input")
+    if pending and pending.get("action") == action:
+        kv_del(conn, "pending_input")

@@ -21,13 +21,11 @@ async def cmd_practice(update, context):
 
 
 def _practice_queue(conn, deck_id, n=10):
-    where = "" if deck_id == 0 else "AND deck_id=?"
-    args = () if deck_id == 0 else (deck_id,)
-    rows = conn.execute(
-        f"SELECT id FROM cards WHERE meaning<>'' {where}", args).fetchall()
-    ids = [r["id"] for r in rows]
-    random.shuffle(ids)
-    return ids[:n]
+    where = "" if deck_id == 0 else "AND deck_id=? "
+    args = ((deck_id,) if deck_id else ()) + (n,)
+    return [r["id"] for r in conn.execute(
+        f"SELECT id FROM cards WHERE meaning<>'' {where}"
+        "ORDER BY RANDOM() LIMIT ?", args)]
 
 
 @owner_only_callback
@@ -38,18 +36,14 @@ async def on_callback(update, context):
     # so no double-answer — mirror quiz_flow.on_callback.
     data = q.data
 
-    if data == "pr_menu":
-        await q.answer()
-        await q.edit_message_text("🏋️ Chọn trò:", reply_markup=MENU)
-
-    elif data.startswith("pr_quiz:"):
+    if data.startswith("pr_quiz:"):
         await q.answer()
         mode = data.split(":")[1]
         decks = conn.execute(
             "SELECT d.id, d.name, COUNT(c.id) n FROM decks d "
             "LEFT JOIN cards c ON c.deck_id=d.id AND c.meaning<>'' "
             "GROUP BY d.id ORDER BY d.id").fetchall()
-        kb = [[Btn(f"Tất cả các bộ", callback_data=f"pr_qd:{mode}:0")]]
+        kb = [[Btn("Tất cả các bộ", callback_data=f"pr_qd:{mode}:0")]]
         kb += [[Btn(f"{d['name']} ({d['n']})", callback_data=f"pr_qd:{mode}:{d['id']}")]
                for d in decks if d["n"]]
         await q.edit_message_text("Luyện bộ nào?", reply_markup=Markup(kb))
@@ -60,10 +54,9 @@ async def on_callback(update, context):
         if mode == "typed":
             await _start_quiz(context, q, "typed", "", int(deck_id))
         else:
-            kb = Markup([[Btn("😌 Dễ", callback_data=f"pr_ql:{deck_id}:easy"),
-                          Btn("🙂 Thường", callback_data=f"pr_ql:{deck_id}:normal"),
-                          Btn("🔥 Khó", callback_data=f"pr_ql:{deck_id}:hard")]])
-            await q.edit_message_text("Chọn mức:", reply_markup=kb)
+            await q.edit_message_text(
+                "Chọn mức:",
+                reply_markup=review_flow.level_kb(lambda lv: f"pr_ql:{deck_id}:{lv}"))
 
     elif data.startswith("pr_ql:"):
         await q.answer()
@@ -82,24 +75,18 @@ async def on_callback(update, context):
         await q.answer()
         st = db.kv_get(conn, "dict_state")
         if st:
-            srow = conn.execute("SELECT * FROM sentences WHERE id=?", (st["sid"],)).fetchone()
+            srow = _sentence(conn, st["sid"])
             if srow:
                 await sentences.send_audio(context, st["chat"], srow)
 
     elif data == "pr_d_next":
         await q.answer()
-        db.kv_del(conn, "dict_state")
-        pi = db.kv_get(conn, "pending_input")
-        if pi and pi.get("action") == "dictation":
-            db.kv_del(conn, "pending_input")
+        _dict_teardown(conn)
         await _dict_next(context, q.message.chat_id)
 
     elif data == "pr_d_stop":
         await q.answer()
-        db.kv_del(conn, "dict_state")
-        pi = db.kv_get(conn, "pending_input")
-        if pi and pi.get("action") == "dictation":
-            db.kv_del(conn, "pending_input")
+        _dict_teardown(conn)
         await q.edit_message_text("🏁 Nghỉ chính tả. /luyen để chơi tiếp.")
 
     elif data == "pr_build":
@@ -119,8 +106,7 @@ async def on_callback(update, context):
         if i in st["chosen"] or i not in st["perm"]:
             return
         st["chosen"].append(i)
-        srow = conn.execute("SELECT * FROM sentences WHERE id=?", (st["sid"],)).fetchone()
-        await _build_render(context, st, srow)
+        await _build_render(context, st)
 
     elif data == "pr_b_undo":
         await q.answer()
@@ -128,15 +114,14 @@ async def on_callback(update, context):
         if not st or not st["chosen"]:
             return
         st["chosen"].pop()
-        srow = conn.execute("SELECT * FROM sentences WHERE id=?", (st["sid"],)).fetchone()
-        await _build_render(context, st, srow)
+        await _build_render(context, st)
 
     elif data == "pr_b_sub":
         st = db.kv_get(conn, "build_state")
         if not st:
             await q.answer()
             return
-        srow = conn.execute("SELECT * FROM sentences WHERE id=?", (st["sid"],)).fetchone()
+        srow = _sentence(conn, st["sid"])
         if len(st["chosen"]) < len(st["words"]):
             await q.answer("Dùng hết các từ đã rồi nộp nhé!", show_alert=False)
             return
@@ -169,7 +154,7 @@ async def on_callback(update, context):
         st = db.kv_get(conn, "build_state")
         db.kv_del(conn, "build_state")
         if st:
-            srow = conn.execute("SELECT * FROM sentences WHERE id=?", (st["sid"],)).fetchone()
+            srow = _sentence(conn, st["sid"])
             if srow:
                 await q.edit_message_text("⏭ Bỏ qua.\n\n" + _sentence_reveal(srow),
                                           parse_mode="HTML", reply_markup=BUILD_NEXT_KB)
@@ -202,8 +187,18 @@ async def _start_quiz(context, q, mode, level, deck_id):
                                     level=level, practice=True, queue=queue)
 
 
+def _sentence(conn, sid):
+    return conn.execute("SELECT * FROM sentences WHERE id=?", (sid,)).fetchone()
+
+
+def _dict_teardown(conn):
+    db.kv_del(conn, "dict_state")
+    db.clear_pending(conn, "dictation")
+
+
 async def _dict_next(context, chat_id):
     conn = context.bot_data["conn"]
+    _dict_teardown(conn)   # phiên cũ (nếu có) không được sống sót sang câu mới
     await sentences.maybe_refill(conn)              # nạp thêm nếu sắp cạn (Gemini có thì chạy)
     srow = sentences.pick(conn, need_words=False)
     if not srow:
@@ -211,20 +206,15 @@ async def _dict_next(context, chat_id):
             chat_id, "⚠️ Kho câu trống. Thêm câu ví dụ vào thẻ (cột ví_dụ/ví_dụ_thêm "
                      "trong CSV) hoặc đặt Gemini API key trong /settings.")
         return
-    aux = []
-    m = await sentences.send_audio(context, chat_id, srow)
-    if m is None:
+    if await sentences.send_audio(context, chat_id, srow) is None:
         await context.bot.send_message(chat_id, "⚠️ Không tạo được audio (mạng?). Thử lại sau.")
         return
-    aux.append(m.message_id)
     kb = Markup([[Btn("🔁 Nghe lại", callback_data="pr_d_repeat"),
                   Btn("⏭ Bỏ qua", callback_data="pr_d_next"),
                   Btn("🏁 Dừng", callback_data="pr_d_stop")]])
-    m2 = await context.bot.send_message(
+    await context.bot.send_message(
         chat_id, "🎧 Nghe và gõ lại câu (chữ Hán):", reply_markup=kb)
-    aux.append(m2.message_id)
-    db.kv_set(conn, "dict_state", {"sid": srow["id"], "tries": 0,
-                                   "chat": chat_id, "aux": aux, "first_ok": False})
+    db.kv_set(conn, "dict_state", {"sid": srow["id"], "tries": 0, "chat": chat_id})
     db.kv_set(conn, "pending_input", {"action": "dictation"})
     sentences.mark_used(conn, srow["id"])
 
@@ -242,10 +232,9 @@ async def _build_next(context, chat_id):
     words = json.loads(srow["words_json"])
     perm = grading.shuffle_words(words, random.Random())
     st = {"sid": srow["id"], "words": words, "perm": perm, "chosen": [],
-          "chat": chat_id, "msg": None}
-    db.kv_set(conn, "build_state", st)
+          "meaning": srow["meaning"], "chat": chat_id, "msg": None}
     sentences.mark_used(conn, srow["id"])
-    await _build_render(context, st, srow)
+    await _build_render(context, st)   # _build_render lo phần lưu state
 
 
 def _build_kb(st):
@@ -265,25 +254,15 @@ def _build_kb(st):
     return Markup(rows)
 
 
-async def _build_render(context, st, srow):
+async def _build_render(context, st):
     conn = context.bot_data["conn"]
     current = " ".join(st["words"][i] for i in st["chosen"]) or "…"
-    text = (f"🧩 <b>Ghép các từ thành câu</b>\n"
-            f"🇬🇧 {html.escape(srow['meaning']) if srow['meaning'] else '(không có gợi ý)'}\n\n"
+    hint = html.escape(st["meaning"]) if st["meaning"] else "(không có gợi ý)"
+    text = ("🧩 <b>Ghép các từ thành câu</b>\n"
+            f"🇬🇧 {hint}\n\n"
             f"Câu của bạn: {html.escape(current)}")
-    if st["msg"]:
-        try:
-            await context.bot.edit_message_text(text, chat_id=st["chat"],
-                                                message_id=st["msg"],
-                                                reply_markup=_build_kb(st),
-                                                parse_mode="HTML")
-            db.kv_set(conn, "build_state", st)
-            return
-        except Exception:
-            pass
-    m = await context.bot.send_message(st["chat"], text,
-                                       reply_markup=_build_kb(st), parse_mode="HTML")
-    st["msg"] = m.message_id
+    await review_flow._edit_or_send(context, st, text, _build_kb(st),
+                                    kv_key="build_state")
     db.kv_set(conn, "build_state", st)
 
 
@@ -309,7 +288,7 @@ async def dictation_input(update, context, pending, text):
     st = db.kv_get(conn, "dict_state")
     if not st:
         return
-    srow = conn.execute("SELECT * FROM sentences WHERE id=?", (st["sid"],)).fetchone()
+    srow = _sentence(conn, st["sid"])
     if not srow:
         db.kv_del(conn, "dict_state")
         return

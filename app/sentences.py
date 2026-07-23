@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 
 from telegram.error import TelegramError
 
@@ -12,17 +11,14 @@ def add_sentence(conn, hanzi, words=None, pinyin="", meaning="",
     norm = grading.normalize_hanzi(hanzi)
     if not norm:
         return None
-    try:
-        cur = conn.execute(
-            "INSERT INTO sentences(hanzi, norm, words_json, pinyin, meaning, "
-            "source, card_id, created_at) VALUES(?,?,?,?,?,?,?,?)",
-            (hanzi, norm,
-             json.dumps(words, ensure_ascii=False) if words else "",
-             pinyin, meaning, source, card_id, config.today_iso()))
-        conn.commit()
-        return cur.lastrowid
-    except Exception:   # UNIQUE(norm) — câu trùng
-        return None
+    cur = conn.execute(   # OR IGNORE: câu trùng (UNIQUE norm) → rowcount 0
+        "INSERT OR IGNORE INTO sentences(hanzi, norm, words_json, pinyin, "
+        "meaning, source, card_id, created_at) VALUES(?,?,?,?,?,?,?,?)",
+        (hanzi, norm,
+         json.dumps(words, ensure_ascii=False) if words else "",
+         pinyin, meaning, source, card_id, config.today_iso()))
+    conn.commit()
+    return cur.lastrowid if cur.rowcount else None
 
 
 def ingest_examples(conn, raw, card_id):

@@ -16,6 +16,33 @@ MODE_LABEL = {"classic": "🃏 Lật thẻ", "typed": "⌨️ Tự luận",
               "mc:hard": "🔘 Trắc nghiệm 🔥 Khó"}
 
 
+def back_lines(row):
+    """Mặt sau thẻ (dùng chung cho lật thẻ và các chế độ trắc nghiệm/tự luận)."""
+    lines = [f"🀄 <b>{html.escape(row['hanzi'])}</b>",
+             f"📖 {html.escape(row['pinyin'])}",
+             f"🇬🇧 {html.escape(row['meaning']) if row['meaning'] else '<i>(chưa có nghĩa)</i>'}"]
+    if row["example"]:
+        lines.append(f"💬 {html.escape(row['example'])}")
+    return lines
+
+
+async def send_back_aux(context, s, row):
+    """Gửi ảnh + audio mặt sau, ghi message id vào aux để dọn khi sang thẻ."""
+    if row["image_file_id"]:
+        m = await context.bot.send_photo(s["chat"], row["image_file_id"])
+        s["aux"].append(m.message_id)
+    m = await send_card_audio(context, s["chat"], row)
+    if m:
+        s["aux"].append(m.message_id)
+
+
+def level_kb(cb):
+    """Bàn phím chọn mức trắc nghiệm; `cb(level)` trả callback_data."""
+    return Markup([[Btn("😌 Dễ", callback_data=cb("easy")),
+                    Btn("🙂 Thường", callback_data=cb("normal")),
+                    Btn("🔥 Khó", callback_data=cb("hard"))]])
+
+
 def _front_kb(cid):
     return Markup([[Btn("🔊 Nghe", callback_data=f"rv_listen:{cid}"),
                     Btn("👀 Xem đáp án", callback_data=f"rv_show:{cid}")]])
@@ -62,7 +89,8 @@ async def start_session(context, chat_id, mode="classic", level="",
     await _show_front(context)
 
 
-async def _edit_or_send(context, s, text, kb):
+async def _edit_or_send(context, s, text, kb, kv_key="session"):
+    """Sửa tin nhắn tại chỗ nếu còn, không thì gửi mới. `s` cần khóa chat/msg."""
     conn = context.bot_data["conn"]
     if s["msg"]:
         try:
@@ -76,7 +104,7 @@ async def _edit_or_send(context, s, text, kb):
             pass
     m = await context.bot.send_message(s["chat"], text, reply_markup=kb, parse_mode="HTML")
     s["msg"] = m.message_id
-    db.kv_set(conn, "session", s)
+    db.kv_set(conn, kv_key, s)
 
 
 async def _show_front(context):
@@ -133,10 +161,9 @@ async def on_callback(update, context):
         await show_mode_picker(context, q.message.chat_id)
         return
     if q.data == "rv_mc_levels":
-        kb = Markup([[Btn("😌 Dễ", callback_data="rv_mode:mc:easy"),
-                      Btn("🙂 Thường", callback_data="rv_mode:mc:normal"),
-                      Btn("🔥 Khó", callback_data="rv_mode:mc:hard")]])
-        await q.edit_message_text("Chọn mức trắc nghiệm:", reply_markup=kb)
+        await q.edit_message_text(
+            "Chọn mức trắc nghiệm:",
+            reply_markup=level_kb(lambda lv: f"rv_mode:mc:{lv}"))
         return
     if q.data.startswith("rv_mode:"):
         choice = q.data.split(":", 1)[1]          # classic | typed | mc:easy...
@@ -159,7 +186,7 @@ async def on_callback(update, context):
     if action == "rv_listen":
         if row is None:  # thẻ đã bị xóa giữa chừng
             await context.bot.send_message(s["chat"], "⚠️ Thẻ này đã bị xóa.")
-            await _advance(context)
+            await advance(context)
             return
         m = await send_card_audio(context, s["chat"], row)
         if m is None:
@@ -171,20 +198,12 @@ async def on_callback(update, context):
     elif action == "rv_show":
         if row is None:  # thẻ đã bị xóa giữa chừng
             await context.bot.send_message(s["chat"], "⚠️ Thẻ này đã bị xóa.")
-            await _advance(context)
+            await advance(context)
             return
-        lines = [f"🀄 <b>{html.escape(row['hanzi'])}</b>", f"📖 {html.escape(row['pinyin'])}",
-                 f"🇬🇧 {html.escape(row['meaning']) if row['meaning'] else '<i>(chưa có nghĩa)</i>'}"]
-        if row["example"]:
-            lines.append(f"💬 {html.escape(row['example'])}")
+        lines = back_lines(row)
         lines.append(f"\n({s['pos'] + 1}/{len(s['queue'])})")
         await _edit_or_send(context, s, "\n".join(lines), _answer_kb(cid))
-        if row["image_file_id"]:
-            m = await context.bot.send_photo(s["chat"], row["image_file_id"])
-            s["aux"].append(m.message_id)
-        m = await send_card_audio(context, s["chat"], row)
-        if m:
-            s["aux"].append(m.message_id)
+        await send_back_aux(context, s, row)
         db.kv_set(conn, "session", s)
 
     elif action == "rv_rate":
@@ -195,7 +214,7 @@ async def on_callback(update, context):
         if row is None:  # thẻ đã bị xóa giữa chừng — skip without rating
             await _clear_aux(context, s)
             db.kv_set(conn, "session", s)
-            await _advance(context)
+            await advance(context)
             return
         rating = int(parts[2])
         cards.apply_rating(conn, cid, rating, config.today())
@@ -204,7 +223,7 @@ async def on_callback(update, context):
         s["done"] += 1
         await _clear_aux(context, s)
         db.kv_set(conn, "session", s)
-        await _advance(context)
+        await advance(context)
 
 
 async def advance(context):
@@ -222,13 +241,8 @@ async def advance(context):
                 context, s,
                 f"🎉 <b>Hoàn thành!</b> Đã ôn {s['done']} lượt.\n🔥 Chuỗi: {n} ngày liên tiếp.",
                 None)
-        pi = db.kv_get(conn, "pending_input")
-        if pi and pi.get("action") == "quiz_typed":
-            db.kv_del(conn, "pending_input")
+        db.clear_pending(conn, "quiz_typed")
         db.kv_del(conn, "session")
         return
     db.kv_set(conn, "session", s)
     await _show_front(context)
-
-
-_advance = advance

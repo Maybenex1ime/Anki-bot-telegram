@@ -20,9 +20,9 @@ def _pick_valid(cands, correct_meaning, need=3):
     out, seen, ban = [], set(), _ban_set(correct_meaning)
     for m in cands:
         nm = grading.normalize_meaning(m)
-        if not nm or nm in seen or nm in ban:
+        if not nm or nm in seen:
             continue
-        if any(b and (nm in b or b in nm) for b in ban):
+        if any(nm in b or b in nm for b in ban):
             continue
         seen.add(nm)
         out.append(m)
@@ -31,16 +31,12 @@ def _pick_valid(cands, correct_meaning, need=3):
     return out
 
 
-def _random_meanings(conn, exclude_id, limit=25):
+def _other_meanings(conn, exclude_id, deck_id=None, limit=25):
+    deck_clause = "AND deck_id=? " if deck_id is not None else ""
+    args = (exclude_id,) + ((deck_id,) if deck_id is not None else ()) + (limit,)
     return [r["meaning"] for r in conn.execute(
-        "SELECT meaning FROM cards WHERE id<>? AND meaning<>'' "
-        "ORDER BY RANDOM() LIMIT ?", (exclude_id, limit))]
-
-
-def _same_deck_meanings(conn, row, limit=25):
-    return [r["meaning"] for r in conn.execute(
-        "SELECT meaning FROM cards WHERE id<>? AND deck_id=? AND meaning<>'' "
-        "ORDER BY RANDOM() LIMIT ?", (row["id"], row["deck_id"], limit))]
+        f"SELECT meaning FROM cards WHERE id<>? {deck_clause}AND meaning<>'' "
+        "ORDER BY RANDOM() LIMIT ?", args)]
 
 
 def _homophone_meanings(conn, row, limit=10):
@@ -78,20 +74,17 @@ async def get_options(conn, row, level):
         g = await gemini.make_distractors(conn, row["hanzi"], correct, level)
         if g:
             cands += g
-        cands += _same_deck_meanings(conn, row)
+        cands += _other_meanings(conn, row["id"], deck_id=row["deck_id"])
     elif level == "hard":
         homo = _homophone_meanings(conn, row)
         g = await gemini.make_distractors(conn, row["hanzi"], correct, level)
         # ưu tiên trộn: đồng âm trước, rồi đồng nghĩa giả
         cands += homo[:2] + (g or []) + homo[2:]
-    cands += _random_meanings(conn, row["id"])
     opts = _pick_valid(cands, correct)
-    if len(opts) < 3:
-        conn.execute("INSERT OR REPLACE INTO distractors VALUES(?, ?, ?)",
-                     (row["id"], level, "[]"))
-        conn.commit()
-        return None
+    if len(opts) < 3:   # chỉ quét toàn kho khi các nguồn rẻ chưa đủ
+        opts = _pick_valid(cands + _other_meanings(conn, row["id"]), correct)
+    stored = json.dumps(opts, ensure_ascii=False) if len(opts) == 3 else "[]"
     conn.execute("INSERT OR REPLACE INTO distractors VALUES(?, ?, ?)",
-                 (row["id"], level, json.dumps(opts, ensure_ascii=False)))
+                 (row["id"], level, stored))
     conn.commit()
-    return opts
+    return opts if len(opts) == 3 else None
