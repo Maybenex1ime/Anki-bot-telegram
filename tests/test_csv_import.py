@@ -35,3 +35,11 @@ def test_blank_lines_skipped():
     r = parse_csv("hán\n学\n\n习\n")
     assert [row.hanzi for row in r.rows] == ["学", "习"]
     assert not r.errors
+
+
+def test_extra_examples_column():
+    text = "hán,nghĩa,ví_dụ,ví_dụ_thêm\n学习,to study,我在学习,我们一起学习吧|他学习很努力\n"
+    r = parse_csv(text)
+    assert r.rows[0].extra_examples == "我们一起学习吧|他学习很努力"
+    r2 = parse_csv("hán\n学\n")
+    assert r2.rows[0].extra_examples == ""

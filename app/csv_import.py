@@ -7,6 +7,7 @@ _ALIASES = {
     "pinyin": "pinyin",
     "nghĩa": "meaning", "nghia": "meaning", "meaning": "meaning",
     "ví_dụ": "example", "vi_du": "example", "example": "example",
+    "ví_dụ_thêm": "extra_examples", "vi_du_them": "extra_examples",
 }
 
 
@@ -16,6 +17,7 @@ class CsvRow:
     pinyin: str = ""
     meaning: str = ""
     example: str = ""
+    extra_examples: str = ""
 
 
 @dataclass
@@ -54,5 +56,6 @@ def parse_csv(text: str) -> CsvResult:
             continue
         result.rows.append(CsvRow(
             hanzi=hanzi, pinyin=cell(row, "pinyin"),
-            meaning=cell(row, "meaning"), example=cell(row, "example")))
+            meaning=cell(row, "meaning"), example=cell(row, "example"),
+            extra_examples=cell(row, "extra_examples")))
     return result

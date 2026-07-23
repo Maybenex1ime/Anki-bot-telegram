@@ -8,8 +8,9 @@ from app.bot.auth import owner_only_callback
 GUIDE = (
     "📄 <b>Nhập thẻ từ CSV</b>\n\n"
     "Soạn file .csv (UTF-8) với header:\n"
-    "<code>hán,pinyin,nghĩa,ví_dụ</code>\n\n"
+    "<code>hán,pinyin,nghĩa,ví_dụ,ví_dụ_thêm</code>\n\n"
     "Chỉ cột <b>hán</b> bắt buộc — pinyin/nghĩa bỏ trống sẽ được tra tự động.\n"
+    "Cột <b>ví_dụ_thêm</b>: nhiều câu cho kho luyện tập, ngăn cách bằng dấu |.\n"
     "VD:\n<code>hán,pinyin,nghĩa,ví_dụ\n学习,,,我在学习中文\n你好,nǐ hǎo,hello; hi,</code>\n\n"
     "Rồi gửi file vào đây."
 )
@@ -49,10 +50,12 @@ async def on_callback(update, context):
         return
     db.kv_del(conn, "pending_csv")
     from app.csv_import import parse_csv
+    from app import sentences
     result = parse_csv(text)
     total = len(result.rows)
     await q.edit_message_text(f"⏳ Đang nhập {total} thẻ...")
     created = skipped = 0
+    sent_added = 0
     for i, r in enumerate(result.rows, 1):
         if cards.exists_hanzi(conn, r.hanzi):
             skipped += 1
@@ -61,12 +64,20 @@ async def on_callback(update, context):
                                     pinyin_override=r.pinyin,
                                     meaning_override=r.meaning, example=r.example)
             created += 1
+        crow = conn.execute("SELECT id FROM cards WHERE hanzi=? LIMIT 1", (r.hanzi,)).fetchone()
+        card_id = crow["id"] if crow else None
+        if r.example:
+            sent_added += sentences.ingest_examples(conn, r.example, card_id)
+        if r.extra_examples:
+            sent_added += sentences.ingest_examples(conn, r.extra_examples, card_id)
         if i % 10 == 0:
             try:
                 await q.edit_message_text(f"⏳ Đang nhập... {i}/{total}")
             except BadRequest:
                 pass
     lines = [f"✅ Nhập xong: {created} thẻ mới, {skipped} trùng (bỏ qua)."]
+    if sent_added > 0:
+        lines.append(f"📚 Thêm {sent_added} câu vào kho luyện tập.")
     if result.errors:
         lines.append("⚠️ Dòng lỗi (bỏ qua):")
         lines += [f"  • dòng {ln}: {reason}" for ln, reason in result.errors[:15]]

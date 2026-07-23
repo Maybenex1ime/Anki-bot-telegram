@@ -83,6 +83,9 @@ async def on_callback(update, context):
             conn, pc["hanzi"], deck_id=pc["deck_id"],
             pinyin_override=pc["pinyin"], meaning_override=pc["meaning"],
             example=pc["example"], image_file_id=pc["image_file_id"])
+        from app import sentences
+        if row["example"]:
+            sentences.ingest_examples(conn, row["example"], row["id"])
         db.kv_del(conn, "pending_card")
         db.kv_del(conn, "pending_msg")
         note = "" if row["audio_path"] else "\n⚠️ Chưa tạo được audio, sẽ thử lại khi ôn."
