@@ -3,7 +3,7 @@ import os
 
 import httpx
 
-from app import db
+from app import config, db
 
 API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
@@ -38,13 +38,14 @@ async def ask_json(conn, prompt):
 
 
 async def make_distractors(conn, hanzi, meaning, level):
-    kind = ("nghĩa tiếng Anh cùng nhóm chủ đề nhưng SAI"
+    lang = config.PACK["gemini_name"]
+    kind = (f"an English meaning in the same topic but WRONG"
             if level == "normal"
-            else "nghĩa tiếng Anh RẤT GIỐNG nghĩa đúng nhưng SAI (bẫy gần-đồng-nghĩa)")
+            else "an English meaning VERY CLOSE to the correct one but WRONG (near-synonym trap)")
     data = await ask_json(conn, (
-        f"Từ tiếng Trung: {hanzi}\nNghĩa đúng (tiếng Anh): {meaning}\n"
-        f"Sinh đúng 3 {kind}, ngắn gọn kiểu từ điển.\n"
-        'Trả JSON: {"options": ["...", "...", "..."]}'))
+        f"{lang} word: {hanzi}\nCorrect English meaning: {meaning}\n"
+        f"Generate exactly 3 distractors, each {kind}, short dictionary style.\n"
+        'Return JSON: {"options": ["...", "...", "..."]}'))
     if not isinstance(data, dict) or not isinstance(data.get("options"), list):
         return None
     opts = [str(o).strip()[:80] for o in data["options"] if str(o).strip()][:3]
@@ -52,23 +53,26 @@ async def make_distractors(conn, hanzi, meaning, level):
 
 
 async def judge_meaning(conn, hanzi, meaning, answer):
+    lang = config.PACK["gemini_name"]
     data = await ask_json(conn, (
-        f'Từ tiếng Trung: {hanzi}. Nghĩa chuẩn (tiếng Anh): "{meaning}". '
-        f'Người học trả lời: "{answer}".\n'
-        "Chấm verdict: correct (đúng hoặc tương đương), partial (đúng một phần), wrong.\n"
-        'Trả JSON: {"verdict": "...", "note": "giải thích 1 câu tiếng Việt"}'))
+        f'{lang} word: {hanzi}. Correct English meaning: "{meaning}". '
+        f'Learner answered: "{answer}".\n'
+        "Grade verdict: correct (right or equivalent), partial, wrong.\n"
+        'Return JSON: {"verdict": "...", "note": "one short note in Vietnamese"}'))
     if not isinstance(data, dict) or data.get("verdict") not in ("correct", "partial", "wrong"):
         return None
     return {"verdict": data["verdict"], "note": str(data.get("note", ""))[:200]}
 
 
 async def gen_sentences(conn, vocab, n=10):
+    lang = config.PACK["gemini_name"]
+    fw = config.PACK["function_words"]
     data = await ask_json(conn, (
-        f"Sinh {n} câu tiếng Trung giản thể ngắn (4-10 từ), CHỈ dùng các từ sau "
-        "cộng từ chức năng cơ bản (的了吗在是我你他她们不很和有个这那):\n"
+        f"Generate {n} short {lang} sentences (4-10 words), using ONLY the words below "
+        f"plus basic function words ({fw}):\n"
         + "、".join(vocab[:300]) + "\n"
-        'Trả JSON: {"sentences": [{"hanzi": "...", "words": ["từ", "đã", "tách"], '
-        '"pinyin": "...", "meaning": "bản dịch tiếng Anh"}]}'))
+        'Return JSON: {"sentences": [{"hanzi": "...", "words": ["tokenized"], '
+        '"pinyin": "romanization", "meaning": "English translation"}]}'))
     if not isinstance(data, dict) or not isinstance(data.get("sentences"), list):
         return None
     out = []
@@ -83,9 +87,10 @@ async def gen_sentences(conn, vocab, n=10):
 
 
 async def segment_translate(conn, hanzi):
+    lang = config.PACK["gemini_name"]
     data = await ask_json(conn, (
-        f"Câu tiếng Trung: {hanzi}\nTách từ và dịch sang tiếng Anh.\n"
-        'Trả JSON: {"words": ["từ", "đã", "tách"], "pinyin": "...", "meaning": "..."}'))
+        f"{lang} sentence: {hanzi}\nTokenize into words and translate to English.\n"
+        'Return JSON: {"words": ["tokenized"], "pinyin": "romanization", "meaning": "..."}'))
     if not isinstance(data, dict) or not isinstance(data.get("words"), list) or not data["words"]:
         return None
     return {"words": [str(w)[:20] for w in data["words"]][:20],
@@ -94,10 +99,11 @@ async def segment_translate(conn, hanzi):
 
 
 async def judge_word_order(conn, original, attempt, meaning):
+    lang = config.PACK["gemini_name"]
     data = await ask_json(conn, (
-        f"Câu gốc: {original}\nNghĩa: {meaning}\nHọc viên xếp lại thành: {attempt}\n"
-        "Câu xếp lại có đúng ngữ pháp tiếng Trung và giữ nguyên nghĩa không?\n"
-        'Trả JSON: {"ok": true/false, "note": "1 câu tiếng Việt"}'))
+        f"Original sentence: {original}\nMeaning: {meaning}\nLearner arranged: {attempt}\n"
+        f"Is the arrangement grammatical {lang} with the same meaning?\n"
+        'Return JSON: {"ok": true/false, "note": "one short note in Vietnamese"}'))
     if not isinstance(data, dict) or not isinstance(data.get("ok"), bool):
         return None
     return {"ok": data["ok"], "note": str(data.get("note", ""))[:200]}

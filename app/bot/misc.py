@@ -1,7 +1,7 @@
 from app import config, stats
 
 HELP = (
-    "🀄 <b>Bot học tiếng Trung SRS</b>\n\n"
+    f"🀄 <b>Bot học {config.PACK['display_name']} SRS</b>\n\n"
     "• Gõ chữ Hán bất kỳ (VD: 学习) → tạo thẻ mới\n"
     "• /on — ôn thẻ đến hạn ngay\n"
     "• /luyen — trắc nghiệm, chính tả, ghép câu (không tính lịch ôn)\n"

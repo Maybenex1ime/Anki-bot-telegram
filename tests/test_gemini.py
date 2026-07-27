@@ -90,3 +90,15 @@ async def test_judge_word_order_validates(conn, monkeypatch):
     ok = json.dumps({"ok": True, "note": "đảo trạng ngữ hợp lệ"})
     monkeypatch.setattr(gemini.httpx, "AsyncClient", FakeClient(FakeResp(200, ok)))
     assert (await gemini.judge_word_order(conn, "昨天我去", "我昨天去", "x"))["ok"] is True
+
+
+async def test_prompt_uses_pack_language_name(conn, monkeypatch):
+    seen = {}
+
+    async def fake_ask(conn_, prompt):
+        seen["p"] = prompt
+        return {"options": ["a", "b", "c"]}
+
+    monkeypatch.setattr(gemini, "ask_json", fake_ask)
+    await gemini.make_distractors(conn, "学习", "to learn", "normal")
+    assert "Chinese" in seen["p"]
