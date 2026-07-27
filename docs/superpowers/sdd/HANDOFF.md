@@ -35,9 +35,17 @@
 - `flyctl ssh console -C` tách tham số theo dấu cách và PowerShell nuốt dấu nháy → chỉ chạy được lệnh không có dấu nháy (VD `ls -la /data`); muốn chạy script thì upload trước.
 - Push GitHub từ máy này: `$env:GCM_INTERACTIVE='always'; $env:GIT_TERMINAL_PROMPT='1'; git -c credential.interactive=always push`.
 
+## Kiến trúc langpack — 2 bot song song (Task 4)
+
+- **BOT_LANG env** chọn ngôn ngữ lúc chạy: `zh` (tiếng Trung, mặc định trong `Dockerfile`) hoặc `ko` (tiếng Hàn). Cùng một codebase/image, khác ngôn ngữ chỉ qua biến môi trường — secret `BOT_LANG=ko` ghi đè mặc định của Dockerfile.
+- **2 app Fly riêng biệt:** `reminder-zh-bot` (đang chạy) và `reminder-ko-bot` (dựng theo runbook). 2 app = 2 volume = 2 DB độc lập, không chia sẻ thẻ.
+- **Quy trình "sửa 1 lần, deploy 2 lần":** mọi cập nhật code chạy `flyctl deploy -a reminder-zh-bot` rồi `flyctl deploy -a reminder-ko-bot` (cùng codebase). KHÔNG `fly launch` (xem sự cố 2026-07-22).
+- **Dựng bot Hàn:** làm theo `docs/DEPLOY-ko.md`.
+- **Từ điển Hàn:** bot `ko` dùng **CC-KEDICT** (kho nhỏ) — nhiều lượt tra trả rỗng; khi rỗng thì **nhập nghĩa tay** vào thẻ. Bot `zh` dùng CC-CEDICT như cũ.
+
 ## Tài liệu
 
 - Plan: `docs/superpowers/plans/2026-07-22-chinese-srs-telegram-bot.md`
 - Spec: `docs/superpowers/specs/2026-07-22-chinese-srs-telegram-bot-design.md`
-- Deploy runbook: `docs/DEPLOY.md`
+- Deploy runbook: `docs/DEPLOY.md` (bot Trung); `docs/DEPLOY-ko.md` (bot Hàn)
 - Ledger + brief/report từng task + final review fixes: thư mục này (`docs/superpowers/sdd/`).
