@@ -11,7 +11,7 @@ Tiền đề: bot Trung đã redeploy OK sau refactor langpack (Task 4 Step 2).
 4. Deploy cùng image codebase:
    flyctl deploy -a reminder-ko-bot
 5. Kiểm chứng: flyctl logs -a reminder-ko-bot --no-tail
-   - Lần đầu thấy "Đã nạp CC-KEDICT: N mục" (tải + parse ~vài giây).
+   - Lần đầu thấy "Đã nạp từ điển: N mục" (tải + parse ~vài giây).
    - Nhắn /start cho bot Hàn → tiêu đề "Bot học tiếng Hàn SRS".
    - Gõ 학교 → thẻ có romaja "hakgyo", nghĩa "school", audio giọng ko-KR.
 6. Đặt Gemini key (tùy chọn) qua /settings như bot Trung — dùng chung key được.

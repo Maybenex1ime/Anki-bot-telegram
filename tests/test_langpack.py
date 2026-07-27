@@ -11,6 +11,7 @@ def test_zh_pack_present_and_shaped():
     assert zh["normalize_text"]("我在 学习。") == "我在学习"
     assert zh["tts_voice"] == "zh-CN-XiaoxiaoNeural"
     assert zh["gemini_name"] == "Chinese"
+    assert zh["script_range"] == "一-鿿"
 
 
 def test_get_invalid_lang_raises():
@@ -27,6 +28,7 @@ def test_ko_pack_romanize_and_normalize():
     assert ko["phonetic_key"]("an nyeong") == "annyeong"
     assert ko["tts_voice"] == "ko-KR-SunHiNeural"
     assert ko["gemini_name"] == "Korean"
+    assert ko["script_range"] == "가-힣"
 
 
 def test_ko_parse_kedict(tmp_path):

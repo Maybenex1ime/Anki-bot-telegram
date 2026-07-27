@@ -33,7 +33,7 @@ async def post_init(app):
     app.bot_data["conn"] = conn
     n = lookup.ensure_cedict(conn)
     if n:
-        logging.info("Đã nạp CC-CEDICT: %d mục", n)
+        logging.info("Đã nạp từ điển: %d mục", n)
     reminders.schedule_jobs(app)
 
 

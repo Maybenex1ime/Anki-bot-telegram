@@ -73,6 +73,7 @@ def _parse_kedict(path):
 LANGS = {
     "zh": {
         "display_name": "tiếng Trung",
+        "script_range": "一-鿿",
         "romanize": _zh_romanize,
         "phonetic_key": _zh_phonetic_key,
         "normalize_text": _make_normalize(_ZH_PUNCT),
@@ -85,6 +86,7 @@ LANGS = {
     },
     "ko": {
         "display_name": "tiếng Hàn",
+        "script_range": "가-힣",
         "romanize": _ko_romanize,
         "phonetic_key": _ko_phonetic_key,
         "normalize_text": _make_normalize(_KO_PUNCT),
@@ -100,5 +102,5 @@ LANGS = {
 
 def get(lang):
     if lang not in LANGS:
-        raise ValueError(f"LANG không hợp lệ: {lang!r} (có: {sorted(LANGS)})")
+        raise ValueError(f"BOT_LANG không hợp lệ: {lang!r} (có: {sorted(LANGS)})")
     return LANGS[lang]

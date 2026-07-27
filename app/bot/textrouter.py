@@ -1,10 +1,13 @@
 import re
 
-from app import db
+from app import config, db
 from app.bot import create_flow
 
-_HAN = re.compile(r"[一-鿿]")
 TEXT_ACTIONS = {}
+
+
+def looks_like_word(text):
+    return bool(re.search(f"[{config.PACK['script_range']}]", text))
 
 
 def register(action, fn):
@@ -21,11 +24,11 @@ async def on_text(update, context):
             db.kv_del(conn, "pending_input")
             await fn(update, context, pending, text)
             return
-    if _HAN.search(text):
+    if looks_like_word(text):
         await create_flow.start_pending(update, context, text)
     else:
         await update.message.reply_text(
-            "Gõ chữ Hán để tạo thẻ (VD: 学习), hoặc /start để xem lệnh.")
+            "Gõ một từ để tạo thẻ, hoặc /start để xem lệnh.")
 
 
 async def on_photo(update, context):
