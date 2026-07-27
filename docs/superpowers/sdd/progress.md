@@ -25,3 +25,10 @@ P2 Task 12: complete (commits 4be4b6f..206a5b6 incl. ack fix 206a5b6 (controller
 P2 Task 13: complete (commits 206a5b6..7628f86, review clean; Minor noted: practice block alphabetical order)
 P2: all 13 tasks complete — dispatching final whole-branch review (3c9df78..7628f86)
 P2 FINAL REVIEW: Ready to merge YES (no fix-now items; all Minors deferred; 8 extra manual tests listed in docs/superpowers/sdd/p2-final-review.md)
+--- KOREAN LANGUAGE PACK (plan 2026-07-27-korean-language-pack.md, briefs ko-task-N-*) ---
+KO Task 1: complete (commits aeb5db0..59571fa, review clean; Minor noted: get() error msg says LANG not BOT_LANG, parse_cedict_line reaches langpack._CEDICT_LINE)
+KO Task 2: complete (commits 59571fa..647d60d, review clean; verified: korean-romanizer 0.28 안녕→annyeong, cc-kedict is uncompressed kedict.yml not .gz — adapted; Minor: _parse_kedict assumes well-formed YAML)
+KO Task 3: complete (commits 647d60d..ed68823, review clean; Minor: F541 useless f-string, gen_sentences dropped 'giản thể' qualifier — spec permits)
+KO Task 4: complete (commit 948b0b5 files only; controller ran zh redeploy release deployment-01KYH7A1G138JZ4Q766JTS0X49 — clean start, no dict reload, zh behavior unchanged. Korean bot deploy Steps 2/5 BLOCKED on user BotFather token — DEPLOY-ko.md runbook ready)
+KO PACK: all 4 tasks complete; zh redeployed & verified live. Korean bot awaits user token.
+KO FINAL REVIEW: caught CRITICAL launch-blocker (textrouter [一-鿿] hard-coded, 6th spot missed by plan) — fixed c38faeb (script_range in packs, pack-driven looks_like_word, 66 tests). zh redeployed on HEAD, clean. Korean bot: Ready to launch AFTER user provides BotFather token (Steps 2/5 of DEPLOY-ko.md).
