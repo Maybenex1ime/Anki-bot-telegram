@@ -1,12 +1,10 @@
 import json
-import unicodedata
 
-from app import gemini, grading
+from app import config, gemini, grading
 
 
 def pinyin_key(pinyin):
-    s = unicodedata.normalize("NFD", pinyin.lower())
-    return "".join(c for c in s if c.isascii() and c.isalpha())
+    return config.PACK["phonetic_key"](pinyin)
 
 
 def _ban_set(correct_meaning):

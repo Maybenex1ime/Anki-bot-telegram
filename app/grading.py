@@ -2,14 +2,13 @@ import html
 import re
 from difflib import SequenceMatcher
 
-from app import srs
+from app import config, srs
 
 STOPWORDS = {"a", "an", "the", "to", "of", "in", "on", "at", "for", "and",
              "or", "is", "are", "be", "it", "its", "sth", "sb", "one", "ones",
              "something", "somebody", "someone"}
 _PAREN = re.compile(r"\([^)]*\)|\[[^\]]*\]")
 _PUNCT = re.compile(r"[^\w\s&']", re.UNICODE)
-_HANZI_PUNCT = "。，！？、；：“”‘’…·.,!?;:'\"()（）"
 
 
 def meaning_variants(meaning):
@@ -61,7 +60,7 @@ def time_to_rating(correct, elapsed, level, fast, slow):
 
 
 def normalize_hanzi(s):
-    return "".join(c for c in s if not c.isspace() and c not in _HANZI_PUNCT)
+    return config.PACK["normalize_text"](s)
 
 
 def diff_chars(expected, got):
